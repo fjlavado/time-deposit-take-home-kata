@@ -24,8 +24,9 @@ legacy: isolated starter code, not used by the new backend
 | --- | --- |
 | `domain` | Immutable models, extensible interest policies, repository port; no framework dependencies |
 | `application` | Inbound use-case ports and constructor-injected interactors; depends only on domain |
-| `adapter-persistence` | JDBC mapping, joined withdrawal retrieval, batched balance persistence, Flyway SQL |
-| `adapter-web` | Exactly two business operations, response DTOs, OpenAPI contract tests |
+| `adapter` | Maven parent/aggregator for all adapter modules |
+| `adapter/adapter-persistence` | JDBC mapping, joined withdrawal retrieval, batched balance persistence, Flyway SQL |
+| `adapter/adapter-web` | Exactly two business operations, response DTOs, OpenAPI contract tests |
 | `bootstrap` | Executable application, explicit wiring, transactional update decorator, architecture/end-to-end tests |
 | `legacy` | Builds the original `src/` classes and tests in place, without modifying them |
 
@@ -141,7 +142,7 @@ The original classes and tests remain untouched in `src/`, compiled only by `leg
 
 ## Flyway schema evolution
 
-Migrations live in `adapter-persistence/src/main/resources/db/migration/` and are loaded from that dependency's classpath by bootstrap.
+Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/` and are loaded from that dependency's classpath by bootstrap.
 
 - `V1__create_time_deposit_schema.sql` creates the quoted `"timeDeposits"` table and camel-case columns, `withdrawals`, required constraints, and the foreign-key index.
 - Add each schema change as a new versioned file, for example `V2__add_plan_metadata.sql`.

@@ -34,3 +34,5 @@ Verification drove corrections: an end-to-end assertion initially expected a cen
 The existing starter code was inspected as the behavioral baseline and remains unchanged, as requested. Human review is supported by the seven implementation commits in the tracking document and by independent unit, architecture, contract, transaction, and real-HTTP tests.
 
 After the user explicitly requested commits, each increment was staged separately and exported using `git checkout-index` to `/tmp/opencode/time-deposit-commit-check/`. Maven verification ran against those exported snapshots before committing, ensuring an increment did not accidentally rely on files reserved for a later commit. The complete API checkpoint passed all 47 cases. Documentation was reviewed and whitespace-checked in a separate commit.
+
+The subsequent user-requested adapter refactor was also AI-assisted: both adapter modules were moved under an `adapter` Maven parent/aggregator, with parent inheritance, the OpenAPI test-resource path, and module documentation updated together.

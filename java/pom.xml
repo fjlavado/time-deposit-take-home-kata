@@ -19,8 +19,7 @@
         <module>legacy</module>
         <module>domain</module>
         <module>application</module>
-        <module>adapter-persistence</module>
-        <module>adapter-web</module>
+        <module>adapter</module>
         <module>bootstrap</module>
     </modules>
 

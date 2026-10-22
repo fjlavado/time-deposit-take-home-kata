@@ -34,8 +34,9 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 | `legacy` | None | Builds existing `../src/` without moving or modifying it |
 | `domain` | None | Models, interest policies, outbound repository port |
 | `application` | `domain` | Inbound ports and framework-free interactors |
-| `adapter-persistence` | `domain` | JDBC repository, mappings, versioned SQL migrations |
-| `adapter-web` | `application`, `domain` | Controllers and response DTOs |
+| `adapter` | None | Maven parent/aggregator for all adapter modules |
+| `adapter/adapter-persistence` | `domain` | JDBC repository, mappings, versioned SQL migrations |
+| `adapter/adapter-web` | `application`, `domain` | Controllers and response DTOs |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactions, executable Boot application |
 
 Domain and application production code must not depend on frameworks. New backend modules must not depend on `legacy`.
@@ -116,3 +117,4 @@ Domain and application production code must not depend on frameworks. New backen
 - `docker compose config --quiet`, `git diff --check`, and `git diff --exit-code -- java/src` passed. Original classes and tests are unchanged. Operational and AI-workflow documentation is in `README.md` and `AI_WORKFLOW.md`.
 - Environment: the inherited remote `DOCKER_HOST` timed out, but the local daemon responds. Integration commands use `DOCKER_HOST=unix:///var/run/docker.sock` without changing global configuration.
 - Commit verification: exported each staged checkpoint using `git checkout-index` into `/tmp/opencode/time-deposit-commit-check/` and ran `mvn -q verify` against that snapshot. Steps 6–7 used the local Docker override. Every checkpoint passed; the complete API checkpoint passed all 47 cases.
+- Adapter module refactor: moved both adapters under the `adapter` Maven parent/aggregator. `mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25: all 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips. The OpenAPI resource and Flyway migrations load successfully from the nested modules.
