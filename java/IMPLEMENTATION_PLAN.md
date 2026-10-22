@@ -2,7 +2,8 @@
 
 Status: all seven implementation steps completed and verified on 2026-10-22. The subsequent
 [Doodle-inspired hexagonal refactor](HEXAGONAL_REFACTOR_PLAN.md) is also complete and verified.
-Legacy refactoring remains deferred.
+The subsequent [starter calculator Strategy refactor](CALCULATOR_REFACTOR_PLAN.md)
+is complete, including compatible balance value-object encapsulation in the starter model.
 
 ## Implementation commits
 
@@ -25,7 +26,8 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 - Java 25 bytecode (`--release 25`), compilable with the installed JDK 27.
 - Maven multi-module reactor with Spring Boot 4.1.1 dependency management.
 - PostgreSQL, Spring JDBC, and Flyway as the sole schema-evolution mechanism.
-- Existing `java/src/` classes and tests remain unchanged; their refactoring is deferred.
+- The original backend work preserved `java/src/`; its subsequent calculator and
+  balance-value refactor is tracked in [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md).
 - Exactly two business API operations, described in a checked-in OpenAPI contract.
 - Each step is a buildable, reviewable atomic-commit boundary. No commit is created without an explicit request.
 
@@ -33,7 +35,7 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 | Module | Project dependencies | Responsibility |
 | --- | --- | --- |
-| `legacy` | None | Builds existing `../src/` without moving or modifying it |
+| `legacy` | None | Builds the compatible starter API, interest strategies, and tests in `../src/` |
 | `domain` | None | Models, interest policies, outbound repository port |
 | `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
@@ -103,9 +105,12 @@ Domain and application production code must not depend on frameworks. New backen
 - [x] Record actual AI tools/model, rules, setup, and assisted work.
 - [x] Report verification blockers accurately; do not mark blocked checks as passed.
 
-## Deferred
+## Subsequent starter refactor
 
-- [ ] Separately plan integration/refactoring of the existing calculator and shared model.
+- [x] Separately plan and implement calculator Strategy extraction and behavioral
+  coverage in [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md).
+- The shared starter model now encapsulates an immutable balance value while
+  preserving its public API; the backend retains its independent model.
 
 ## Verification log
 

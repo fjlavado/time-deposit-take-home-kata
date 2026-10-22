@@ -71,3 +71,76 @@ backend passed `mvn -B clean test` and
 11 real PostgreSQL integration cases, with no failures, errors, or skips. Checkpoints
 were reviewed and verified before their Conventional Commits; commit IDs and final
 checks are recorded in `HEXAGONAL_REFACTOR_PLAN.md`.
+
+## Starter calculator Strategy refactor
+
+The user requested a Markdown plan, a Strategy-based refactor of
+`java/src/main/java/org/ikigaidigital/TimeDepositCalculator.java`, and comprehensive
+associated tests. After the user clarified the Java scope, the preliminary Kotlin
+plan was removed and a clean working tree confirmed before Java work began.
+
+Reproduce the task with:
+
+> Follow java/CALCULATOR_REFACTOR_PLAN.md. Establish behavioral coverage against the
+> original Java calculator, then extract injectable plan strategies while preserving
+> the shared model, no-argument construction, updateBalance signature, exact double
+> arithmetic, and in-place updates. Cover plan boundaries, rounding, batching,
+> repeated updates, and extensibility. Run the Java reactor tests and verification.
+
+The same OpenCode harness and `openai/gpt-6.1-sol` model assisted with the plan,
+characterization tests, strategy extraction, extension tests, and documentation.
+Maven/JUnit verified 60 characterization cases before production changes; the
+completed refactor passed 120 non-integration cases (77 in legacy) and 11 real
+PostgreSQL integration cases. Commands and results are recorded in
+`CALCULATOR_REFACTOR_PLAN.md`. Commits were deferred until the user's subsequent
+explicit delivery request.
+
+The user then requested an explicit no-interest strategy and a `resolve` operation.
+OpenCode added `NoInterestStrategy` and `InterestStrategyResolver`, moving registry
+ownership and fallback selection out of the calculator so it always resolves and
+executes an `InterestStrategy`. Thirteen resolver cases and three no-interest cases
+were added. `mvn -B test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed 136 non-integration
+cases (93 in legacy) and 11 PostgreSQL integration cases, with no failures or skips.
+
+The next user refinement made `resolve` deposit-aware: match the plan, evaluate
+the strategy's eligibility assertion, and return `NoInterestStrategy` if either
+matching or eligibility fails. OpenCode introduced `isApplicable(TimeDeposit)`,
+moved the built-in age guards into it, adapted the resolver/calculator and custom
+plan example, and expanded the tests to verify boundary resolution, full-deposit
+assertions, and separation from interest calculation. `mvn -B test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed 163 non-integration
+cases (120 in legacy) and 11 PostgreSQL integration cases, without failures or skips.
+
+## Review and balance value-object refactor
+
+The user requested review of their latest changes followed by value-object
+encapsulation of the starter deposit's balance and a domain update method.
+OpenCode inspected tracked diffs and the untracked strategy files, preserving the
+user's `calculateInterestRounded` extraction. The existing legacy tests exposed
+two half-cent regressions caused by `BigDecimal.valueOf`; both were reproduced
+before restoring the established `new BigDecimal` conversion.
+
+The same harness/model introduced the immutable `Balance` record, with value
+equality and addition returning a new value, and `TimeDeposit.updateBalance` to
+credit already-rounded interest. The deposit retains its identity and compatible
+constructor/getters/setter. The calculator now delegates the mutation, with no
+external read/add/set operation. Focused tests cover equality, immutability,
+floating-point compatibility, replacement setters, independent deposit state,
+and direct rounding-helper behavior. Documentation was updated to reflect the
+user's rounding helper and the new state-encapsulation boundary.
+
+`mvn -B test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed
+178 non-integration cases (135 in legacy) plus 11 PostgreSQL integration cases,
+without failures, errors, or skips.
+
+On the user's subsequent request for meaningful commits, OpenCode reviewed the
+working tree, staged diffs, and recent Conventional Commit history. The Strategy
+checkpoint was staged with the compatible read/add/set balance call; the separate
+balance-value checkpoint switches that call to `deposit.updateBalance`. Each code
+checkpoint was exported from the Git index to a fresh `/tmp/opencode/` directory
+and passed full Maven verification with local PostgreSQL Testcontainers before
+committing. The first snapshot reproduced three rounding regressions after the
+helper had returned to `BigDecimal.valueOf`; the established conversion was restored
+and verification passed before committing. Commit IDs and case counts are recorded
+in `CALCULATOR_REFACTOR_PLAN.md`; delivery documentation is committed separately.

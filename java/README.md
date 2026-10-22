@@ -29,7 +29,7 @@ legacy: isolated starter code, not used by the new backend
 | `adapter/adapter-persistence` | JDBC repository adapter, dedicated joined-row mapper, batched balance persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
 | `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
-| `legacy` | Builds the original `src/` classes and tests in place, without modifying them |
+| `legacy` | Builds the compatible starter API, interest strategies, and tests in `src/` |
 
 ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and the absence of legacy dependencies. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
 
@@ -49,7 +49,7 @@ The buses associate each request class with one handler in a private immutable r
 Run commands from this `java/` directory. Prerequisites: Maven 3.6.3+ and JDK 25 or newer with support for release 25. JDK 27 is supported for compilation using `--release 25`; verification during development used JDK 27.
 
 ```sh
-mvn test       # Unit, controller/contract, architecture, and unchanged legacy tests; no Docker required
+mvn test       # Unit, controller/contract, architecture, and legacy strategy tests; no Docker required
 mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packages the application
 ```
 
@@ -164,7 +164,45 @@ Calculation intentionally uses double arithmetic, `new BigDecimal(interest)`, HA
 
 New policies implement `InterestPolicy` and are supplied to `MonthlyInterestCalculator`; the use cases and adapters do not need to change.
 
-The original classes and tests remain untouched in `src/`, compiled only by `legacy`. Integration/refactoring of those classes is deferred to a separately agreed plan. New domain tests establish independent coverage; the original placeholder test is not treated as evidence of correctness.
+The compatible starter API in `src/` is compiled only by `legacy`. Its calculator
+now delegates to `InterestStrategy` implementations for basic, student, and premium
+plans. `new TimeDepositCalculator()` retains all existing plans; the additional
+constructor accepts a complete `Map<String, InterestStrategy>` registry to register
+custom plans or replace existing rules. `InterestStrategyResolver.resolve(deposit)`
+selects the strategy, returning `NoInterestStrategy` for unregistered plans or when
+the matching strategy's `isApplicable(deposit)` assertion fails. The calculator
+always delegates without a conditional fallback. The resolver defensively copies
+the registry, each strategy owns its eligibility assertion, and the shared
+`InterestStrategy.calculateInterestRounded` helper centralizes compatible rounding.
+Unconstrained functional strategies apply by
+default; override `isApplicable` to define eligibility.
+For example, a custom-only registry can be supplied as:
+
+```java
+InterestStrategy loyalty = new InterestStrategy() {
+    @Override
+    public boolean isApplicable(TimeDeposit deposit) {
+        return deposit.getDays() > 60;
+    }
+
+    @Override
+    public double calculateInterest(TimeDeposit deposit) {
+        return deposit.getBalance() * 0.06 / 12;
+    }
+};
+var calculator = new TimeDepositCalculator(Map.of("loyalty", loyalty));
+```
+
+Include the built-in strategy registrations in that map when those plans are also
+needed. The shared `TimeDeposit` constructor, getters, replacement setter, and the
+calculator's `updateBalance` signature remain compatible. `TimeDeposit` now holds
+an immutable `Balance` value object and encapsulates interest credits through
+`deposit.updateBalance(interest)`. `Balance.addInterest` returns a new value; the
+deposit replaces its balance in place. Interest is already rounded by the strategy
+helper, and neither the value object nor the deposit rounds the final balance.
+The placeholder test has been replaced with 60 characterization cases; 75 further
+cases cover strategies, resolution, extension, balance values, and deposit updates. See
+[CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.
 
 ## Flyway schema evolution
 

@@ -13,15 +13,16 @@
 - Build configuration: root `pom.xml` is a multi-module parent/aggregator; see `IMPLEMENTATION_PLAN.md` for module boundaries and progress.
 - Existing production code: `src/main/java/org/ikigaidigital/`, built by the `legacy` module.
 - Existing tests: `src/test/java/org/ikigaidigital/`, built by the `legacy` module.
-- Keep existing classes and tests unchanged until their separately agreed refactoring plan. Add new backend code and tests in their corresponding modules.
+- The starter calculator's separately requested Strategy refactor is documented in `CALCULATOR_REFACTOR_PLAN.md`. Preserve its compatible API and keep new backend code/tests in their corresponding modules.
 - Test dependencies are centrally managed by the Boot parent.
-- `TimeDepositCalculatorTest.updateBalance_Test` currently contains a tautological assertion. A passing starter suite does not establish behavioral coverage.
+- The starter suite now has 60 characterization cases plus 75 strategy/resolver/extension/value-object cases. Maintain meaningful behavioral assertions when adding plans.
 
 ## Compatibility requirements
 
 - Do not introduce breaking changes to the shared `TimeDeposit` class. Preserve its constructor and public API, including its `Double` balance type.
 - Preserve `public void TimeDepositCalculator.updateBalance(List<TimeDeposit> xs)` and existing callers' ability to instantiate the calculator.
 - The calculator mutates each supplied deposit's balance in place. Preserve that behavior.
+- The starter deposit encapsulates immutable `Balance` values. Credit strategy-rounded interest through `TimeDeposit.updateBalance(double)`; retain the original `Double` getter/replacement setter for compatibility. Shared rounding is in `InterestStrategy.calculateInterestRounded`.
 - Do not increment `days`, deduct withdrawals, or introduce other balance adjustments without a requirement supporting that behavior.
 - Refactor internals behind compatible interfaces. Use separate persistence models and API DTOs where needed rather than forcing database or response requirements into the shared class.
 
@@ -75,7 +76,7 @@ mvn test
 mvn verify
 ```
 
-- Preserve the placeholder test for now, per the user's scope; add independent behavioral coverage in the new modules. Replace it only under the later legacy-refactoring plan.
+- The placeholder was replaced under `CALCULATOR_REFACTOR_PLAN.md`. Keep starter calculator coverage in `src/test/java/`, built by `legacy`, and independent backend coverage in the new modules.
 - Cover each plan, eligibility boundaries (days 30/31, 45/46, and 365/366), rounding, unknown plan values, an empty list, and multiple deposits. Verify both expected balances and in-place updates.
 - Add API and persistence integration coverage as those components are implemented: retrieval shape including withdrawals, bulk update persistence, and decimal/date mappings.
 - Use Testcontainers as preferred by the README for real-database integration tests. Document Docker prerequisites and any Maven profile or lifecycle configuration introduced so the tests are reproducible.
