@@ -1,5 +1,11 @@
-package org.ikigaidigital.application.service;
+package org.ikigaidigital.application;
 
+import org.ikigaidigital.application.bus.DefaultCommandBus;
+import org.ikigaidigital.application.bus.DefaultQueryBus;
+import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
+import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;
+import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
+import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
 import org.ikigaidigital.domain.interest.MonthlyInterestCalculator;
 import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
@@ -13,13 +19,13 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TimeDepositServicesTest {
+class TimeDepositHandlersTest {
     @Test
     void retrievesDepositsIncludingWithdrawalsWithoutUpdatingThem() {
         var deposits = List.of(deposit(1, PlanType.BASIC, 31));
         var repository = new InMemoryRepository(deposits);
 
-        assertThat(new RetrieveTimeDepositsService(repository).retrieveAll()).isEqualTo(deposits);
+        assertThat(queryBus(repository).dispatch(new RetrieveTimeDepositsQuery())).isEqualTo(deposits);
         assertThat(repository.saveCalls).isZero();
         assertThat(repository.updateReads).isZero();
     }
@@ -29,9 +35,7 @@ class TimeDepositServicesTest {
         var original = List.of(deposit(1, PlanType.BASIC, 31), deposit(2, PlanType.STUDENT, 365),
                 deposit(3, PlanType.PREMIUM, 46), deposit(4, PlanType.STUDENT, 366));
         var repository = new InMemoryRepository(original);
-        var service = new UpdateTimeDepositBalancesService(repository, MonthlyInterestCalculator.standardPlans());
-
-        service.updateBalances();
+        commandBus(repository).dispatch(new UpdateTimeDepositBalancesCommand());
 
         assertThat(repository.deposits).extracting(TimeDeposit::balance)
                 .containsExactly(1000.83, 1002.5, 1004.17, 1000.0);
@@ -47,10 +51,19 @@ class TimeDepositServicesTest {
     void supportsAnEmptyRepositoryForBothOperations() {
         var repository = new InMemoryRepository(List.of());
 
-        new UpdateTimeDepositBalancesService(repository, MonthlyInterestCalculator.standardPlans()).updateBalances();
+        commandBus(repository).dispatch(new UpdateTimeDepositBalancesCommand());
 
-        assertThat(new RetrieveTimeDepositsService(repository).retrieveAll()).isEmpty();
+        assertThat(queryBus(repository).dispatch(new RetrieveTimeDepositsQuery())).isEmpty();
         assertThat(repository.saveCalls).isEqualTo(1);
+    }
+
+    private static DefaultCommandBus commandBus(TimeDepositRepository repository) {
+        return new DefaultCommandBus(List.of(new UpdateTimeDepositBalancesCommandHandler(repository,
+                MonthlyInterestCalculator.standardPlans())));
+    }
+
+    private static DefaultQueryBus queryBus(TimeDepositRepository repository) {
+        return new DefaultQueryBus(List.of(new RetrieveTimeDepositsQueryHandler(repository)));
     }
 
     private static TimeDeposit deposit(int id, PlanType plan, int days) {
