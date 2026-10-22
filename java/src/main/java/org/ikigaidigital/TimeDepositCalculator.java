@@ -22,7 +22,7 @@ public class TimeDepositCalculator {
         for (TimeDeposit deposit : xs) {
             double interest = strategyResolver.resolve(deposit)
                     .calculateInterestRounded(deposit);
-            deposit.setBalance(deposit.getBalance() + interest);
+            deposit.updateBalance(interest);
         }
     }
 }
