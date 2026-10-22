@@ -2,13 +2,16 @@
 
 ## Scope and compatibility
 
-Refactor `src/main/java/org/ikigaidigital/TimeDepositCalculator.java` and its
-associated tests, built by the `legacy` module. This is the separately requested
+Refactor `domain/src/main/java/org/ikigaidigital/TimeDepositCalculator.java` and its
+associated tests, now built by the `domain` module. This is the separately requested
 starter-code refactor deferred by the earlier backend plans.
 
 Preserve the `TimeDeposit` public API, public no-argument calculator construction,
 `public void updateBalance(List<TimeDeposit> xs)`, and in-place balance updates.
-The backend modules retain their independent domain model and calculation path.
+The backend retains its immutable domain model; `MonthlyInterestCalculator` now adapts
+it to the shared Strategy calculator. The separate `legacy` module and duplicate
+interest policies were removed in the subsequent domain consolidation. Results and
+commit checkpoints below retain the commands/module names used at the time.
 
 ## Design
 
@@ -74,7 +77,7 @@ Invalid-input handling is outside the assignment's requirements.
 Run from `java/` with JDK 27 (compiling for Java 25):
 
 ```sh
-mvn -B -pl legacy -am test
+mvn -B -pl domain -am test
 mvn -B test
 DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify
 ```

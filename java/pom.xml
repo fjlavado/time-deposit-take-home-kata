@@ -16,7 +16,6 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>legacy</module>
         <module>domain</module>
         <module>application</module>
         <module>adapter</module>

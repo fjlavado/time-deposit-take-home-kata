@@ -1,36 +1,32 @@
 package org.ikigaidigital.domain.interest;
 
-import org.ikigaidigital.domain.model.PlanType;
+import org.ikigaidigital.TimeDepositCalculator;
 import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.interest.InterestStrategy;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
+import java.util.Map;
 
 public final class MonthlyInterestCalculator {
-    private final List<InterestPolicy> policies;
+    private final TimeDepositCalculator calculator;
 
-    public MonthlyInterestCalculator(List<InterestPolicy> policies) {
-        this.policies = List.copyOf(policies);
+    public MonthlyInterestCalculator(Map<String, InterestStrategy> strategies) {
+        this(new TimeDepositCalculator(strategies));
+    }
+
+    private MonthlyInterestCalculator(TimeDepositCalculator calculator) {
+        this.calculator = calculator;
     }
 
     public static MonthlyInterestCalculator standardPlans() {
-        return new MonthlyInterestCalculator(List.of(
-                new AnnualRateInterestPolicy(PlanType.BASIC, 0.01, days -> days > 30),
-                new AnnualRateInterestPolicy(PlanType.STUDENT, 0.03, days -> days > 30 && days < 366),
-                new AnnualRateInterestPolicy(PlanType.PREMIUM, 0.05, days -> days > 45)
-        ));
+        return new MonthlyInterestCalculator(new TimeDepositCalculator());
     }
 
     public TimeDeposit applyTo(TimeDeposit deposit) {
-        double interest = policies.stream()
-                .filter(policy -> policy.supports(deposit.planType()))
-                .findFirst()
-                .map(policy -> policy.monthlyInterest(deposit))
-                .orElse(0.0);
-        // Compatibility requires the binary double -> BigDecimal constructor, not valueOf.
-        // Round only interest; rounding the resulting balance would change established behavior.
-        double roundedInterest = new BigDecimal(interest).setScale(2, RoundingMode.HALF_UP).doubleValue();
-        return deposit.withBalance(deposit.balance() + roundedInterest);
+        // Adapt the immutable backend model to the compatible mutable API so both use the same rules.
+        var calculation = new org.ikigaidigital.TimeDeposit(
+                deposit.id(), deposit.planType().value(), deposit.balance(), deposit.days());
+        calculator.updateBalance(List.of(calculation));
+        return deposit.withBalance(calculation.getBalance());
     }
 }

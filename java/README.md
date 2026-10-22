@@ -15,23 +15,20 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
                  |                                       |
           typed requests -> handlers                     |
                  +----------> domain <--------------------+
-                            models, rules,
+                            models, strategies,
                             outbound ports
-
-legacy: isolated starter code, not used by the new backend
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| `domain` | Immutable models, extensible interest policies, repository port; no framework dependencies |
+| `domain` | Compatible shared calculator/model, immutable backend models, extensible interest strategies, repository port; no framework dependencies |
 | `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | JDBC repository adapter, dedicated joined-row mapper, batched balance persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
 | `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
-| `legacy` | Builds the compatible starter API, interest strategies, and tests in `src/` |
 
-ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and the absence of legacy dependencies. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
+ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and confinement of the compatible mutable calculator API to domain. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
 
 ### Command and query flow
 
@@ -42,14 +39,14 @@ This structure adopts Doodle's synchronous command/query bus pattern within the 
 
 The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`; the update uses `Void` because it has no response payload. The runtime registry casts are confined to the dispatchers.
 
-`UseCaseConfiguration` registers handlers and constructs both buses. `PersistenceAdapterConfiguration` supplies the JDBC adapter and result-set mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions continue to use `InterestPolicy`.
+`UseCaseConfiguration` registers handlers and constructs both buses. `PersistenceAdapterConfiguration` supplies the JDBC adapter and result-set mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions use `InterestStrategy`.
 
 ## Build and test
 
 Run commands from this `java/` directory. Prerequisites: Maven 3.6.3+ and JDK 25 or newer with support for release 25. JDK 27 is supported for compilation using `--release 25`; verification during development used JDK 27.
 
 ```sh
-mvn test       # Unit, controller/contract, architecture, and legacy strategy tests; no Docker required
+mvn test       # Unit, controller/contract, architecture, and shared strategy tests; no Docker required
 mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packages the application
 ```
 
@@ -162,10 +159,15 @@ Rates are interpreted as annual percentages credited monthly. Matching is case-s
 
 Calculation intentionally uses double arithmetic, `new BigDecimal(interest)`, HALF_UP rounding of interest to two places, and double addition. **The final balance is not separately rounded.** For example, two basic credits on 1000 produce `1001.6600000000001`, matching the established behavior. The database uses unconstrained PostgreSQL `NUMERIC` to avoid silently rounding that result; the JDBC adapter explicitly maps decimal storage to/from the domain's double balance. Withdrawal amounts remain `BigDecimal` throughout.
 
-New policies implement `InterestPolicy` and are supplied to `MonthlyInterestCalculator`; the use cases and adapters do not need to change.
+New rules implement `InterestStrategy` and are supplied as a complete `Map<String, InterestStrategy>` registry to either calculator; the use cases and adapters do not need to change.
 
-The compatible starter API in `src/` is compiled only by `legacy`. Its calculator
-now delegates to `InterestStrategy` implementations for basic, student, and premium
+The compatible starter API and its tests now live in `domain/src/`; the separate
+`legacy` module has been removed. Original package names are retained to preserve
+source compatibility. `MonthlyInterestCalculator` adapts the immutable backend model
+to the shared calculator and returns an updated copy, preserving metadata and withdrawals.
+Eligibility, rates, rounding, and balance credits use the same implementation for both
+APIs; the duplicate `InterestPolicy` and `AnnualRateInterestPolicy` types were removed.
+The shared calculator delegates to `InterestStrategy` implementations for basic, student, and premium
 plans. `new TimeDepositCalculator()` retains all existing plans; the additional
 constructor accepts a complete `Map<String, InterestStrategy>` registry to register
 custom plans or replace existing rules. `InterestStrategyResolver.resolve(deposit)`

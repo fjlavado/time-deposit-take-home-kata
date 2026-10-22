@@ -11,8 +11,8 @@
 
 - Java 25 compilation target, Maven, Spring Boot 4.1.1, base package `org.ikigaidigital`. JDK 27 can compile the target with `--release 25`.
 - Build configuration: root `pom.xml` is a multi-module parent/aggregator; see `IMPLEMENTATION_PLAN.md` for module boundaries and progress.
-- Existing production code: `src/main/java/org/ikigaidigital/`, built by the `legacy` module.
-- Existing tests: `src/test/java/org/ikigaidigital/`, built by the `legacy` module.
+- Shared production code and backend domain code: `domain/src/main/java/org/ikigaidigital/`, built by the `domain` module. The `legacy` module has been removed.
+- Shared and backend domain tests: `domain/src/test/java/org/ikigaidigital/`, built by the `domain` module.
 - The starter calculator's separately requested Strategy refactor is documented in `CALCULATOR_REFACTOR_PLAN.md`. Preserve its compatible API and keep new backend code/tests in their corresponding modules.
 - Test dependencies are centrally managed by the Boot parent.
 - The starter suite now has 60 characterization cases plus 75 strategy/resolver/extension/value-object cases. Maintain meaningful behavioral assertions when adding plans.
@@ -64,6 +64,7 @@ The README explicitly states that the existing calculator is correct. Its implem
 - The backend uses typed command/query records, dedicated handlers, and synchronous buses. Controllers depend on `application.port.in.CommandBus` and `QueryBus`; bootstrap wires handlers and the transactional command-bus decorator. Follow `HEXAGONAL_REFACTOR_PLAN.md` for the completed refactor and preserve these boundaries.
 - Keep the design proportional to the kata. Apply SOLID principles and introduce small, focused abstractions where they make interest rules easier to extend.
 - Separate plan eligibility/rate logic from orchestration and infrastructure so future interest complexities can be added without rewriting the API or persistence layer.
+- Use the shared `InterestStrategy` implementations for both calculator APIs. `MonthlyInterestCalculator` adapts immutable backend deposits to the compatible mutable calculator; do not reintroduce duplicate policies or rounding logic. Retain the original public packages for compatibility; architecture rules treat them as part of domain.
 - Use an OpenAPI/Swagger contract describing both operations, response schemas, and how to invoke them.
 - Keep Java package names, source layout, and coding style consistent with the existing project.
 
@@ -76,7 +77,7 @@ mvn test
 mvn verify
 ```
 
-- The placeholder was replaced under `CALCULATOR_REFACTOR_PLAN.md`. Keep starter calculator coverage in `src/test/java/`, built by `legacy`, and independent backend coverage in the new modules.
+- The placeholder was replaced under `CALCULATOR_REFACTOR_PLAN.md`. Keep shared calculator coverage in `domain/src/test/java/` alongside backend domain coverage, and backend application/adapter coverage in their corresponding modules.
 - Cover each plan, eligibility boundaries (days 30/31, 45/46, and 365/366), rounding, unknown plan values, an empty list, and multiple deposits. Verify both expected balances and in-place updates.
 - Add API and persistence integration coverage as those components are implemented: retrieval shape including withdrawals, bulk update persistence, and decimal/date mappings.
 - Use Testcontainers as preferred by the README for real-database integration tests. Document Docker prerequisites and any Maven profile or lifecycle configuration introduced so the tests are reproducible.

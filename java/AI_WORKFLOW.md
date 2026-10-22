@@ -144,3 +144,19 @@ committing. The first snapshot reproduced three rounding regressions after the
 helper had returned to `BigDecimal.valueOf`; the established conversion was restored
 and verification passed before committing. Commit IDs and case counts are recorded
 in `CALCULATOR_REFACTOR_PLAN.md`; delivery documentation is committed separately.
+
+## Domain consolidation
+
+On the user's request to move `legacy` into `domain` and remove unnecessary policy
+code, OpenCode with `openai/gpt-6.1-sol` moved the shared sources and tests into
+`domain/src/`, retained their public packages, and removed the `legacy` Maven module.
+`MonthlyInterestCalculator` now adapts immutable backend deposits to the shared
+Strategy calculator instead of duplicating eligibility, rates, or rounding through
+`InterestPolicy` and `AnnualRateInterestPolicy`. Architecture checks include the
+compatible public packages in the framework-free domain layer and confine their
+use to that layer. Existing behavioral tests and the backend extension test verify
+the unified calculation path; agent guidance and module documentation were updated.
+
+`mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify`
+passed on JDK 27 with release 25: 178 non-integration cases (160 in domain) and
+11 real PostgreSQL integration cases, without failures, errors, or skips.

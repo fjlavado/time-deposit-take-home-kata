@@ -3,6 +3,7 @@ package org.ikigaidigital.domain.interest;
 import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
+import org.ikigaidigital.interest.InterestStrategy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -11,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -67,12 +69,26 @@ class MonthlyInterestCalculatorTest {
     }
 
     @Test
-    void acceptsFuturePoliciesWithoutChangingTheCalculator() {
+    void acceptsFutureStrategiesWithoutChangingTheCalculator() {
         var future = new PlanType("future");
-        var custom = new MonthlyInterestCalculator(List.of(
-                new AnnualRateInterestPolicy(future, 0.12, days -> days > 60)));
+        InterestStrategy strategy = new InterestStrategy() {
+            @Override
+            public boolean isApplicable(org.ikigaidigital.TimeDeposit deposit) {
+                return deposit.getDays() > 60;
+            }
+
+            @Override
+            public double calculateInterest(org.ikigaidigital.TimeDeposit deposit) {
+                return deposit.getBalance() * 0.12 / 12;
+            }
+        };
+        var custom = new MonthlyInterestCalculator(Map.of(future.value(), strategy));
 
         assertThat(custom.applyTo(new TimeDeposit(1, future, 1000, 61, List.of())).balance())
                 .isEqualTo(1010);
+        assertThat(custom.applyTo(new TimeDeposit(1, future, 1000, 60, List.of())).balance())
+                .isEqualTo(1000);
+        assertThat(custom.applyTo(new TimeDeposit(2, PlanType.BASIC, 1000, 61, List.of())).balance())
+                .isEqualTo(1000);
     }
 }

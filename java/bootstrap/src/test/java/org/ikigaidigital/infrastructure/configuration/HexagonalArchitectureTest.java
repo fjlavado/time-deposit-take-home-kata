@@ -13,15 +13,20 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
 class HexagonalArchitectureTest {
+    // The original public packages now belong to domain; retain their names for API compatibility.
+    private static final String[] DOMAIN_PACKAGES = {
+            "org.ikigaidigital.domain..", "org.ikigaidigital", "org.ikigaidigital.interest.."
+    };
     private static final JavaClasses BACKEND = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("org.ikigaidigital");
 
     @Test
     void domainDependsOnlyOnJavaAndItself() {
-        classes().that().resideInAPackage("org.ikigaidigital.domain..")
+        classes().that().resideInAnyPackage(DOMAIN_PACKAGES)
                 .should().onlyDependOnClassesThat()
-                .resideInAnyPackage("java..", "org.ikigaidigital.domain..")
+                .resideInAnyPackage("java..", "org.ikigaidigital.domain..",
+                        "org.ikigaidigital", "org.ikigaidigital.interest..")
                 .check(BACKEND);
     }
 
@@ -36,7 +41,7 @@ class HexagonalArchitectureTest {
     @Test
     void moduleDependenciesPointInwardAndOnlyBootstrapConnectsAdapters() {
         layeredArchitecture().consideringOnlyDependenciesInLayers()
-                .layer("Domain").definedBy("org.ikigaidigital.domain..")
+                .layer("Domain").definedBy(DOMAIN_PACKAGES)
                 .layer("Application").definedBy("org.ikigaidigital.application..")
                 .layer("Persistence").definedBy("org.ikigaidigital.infrastructure.persistence..")
                 .layer("Web").definedBy("org.ikigaidigital.infrastructure.web..")
@@ -85,8 +90,10 @@ class HexagonalArchitectureTest {
     }
 
     @Test
-    void newBackendDoesNotDependOnLegacyClasses() {
-        noClasses().should().dependOnClassesThat().resideInAPackage("org.ikigaidigital")
+    void onlyDomainUsesTheCompatibleMutableApiAndStrategies() {
+        noClasses().that().resideOutsideOfPackages(DOMAIN_PACKAGES)
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("org.ikigaidigital", "org.ikigaidigital.interest..")
                 .check(BACKEND);
     }
 }

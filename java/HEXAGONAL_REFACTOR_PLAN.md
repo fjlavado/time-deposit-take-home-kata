@@ -1,5 +1,10 @@
 # Doodle-Inspired Hexagonal Refactoring Plan
 
+This completed plan records the original refactor. The later domain consolidation
+moved shared sources/tests from `java/src/` into `java/domain/src/`, removed `legacy`,
+and replaced duplicate interest policies with the shared Strategy implementation.
+See [README.md](README.md) for the current module layout.
+
 ## Goal and constraints
 
 Apply Doodle's synchronous command/query dispatch pattern to this Java backend,

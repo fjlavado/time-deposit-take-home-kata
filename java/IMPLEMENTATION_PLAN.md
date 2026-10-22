@@ -4,6 +4,9 @@ Status: all seven implementation steps completed and verified on 2026-10-22. The
 [Doodle-inspired hexagonal refactor](HEXAGONAL_REFACTOR_PLAN.md) is also complete and verified.
 The subsequent [starter calculator Strategy refactor](CALCULATOR_REFACTOR_PLAN.md)
 is complete, including compatible balance value-object encapsulation in the starter model.
+The shared sources/tests are now consolidated in `domain/src/`; the separate `legacy`
+module and duplicate interest policies have been removed. Both calculator APIs use the
+shared strategies. Earlier verification logs below describe their historical layouts.
 
 ## Implementation commits
 
@@ -35,15 +38,14 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 | Module | Project dependencies | Responsibility |
 | --- | --- | --- |
-| `legacy` | None | Builds the compatible starter API, interest strategies, and tests in `../src/` |
-| `domain` | None | Models, interest policies, outbound repository port |
+| `domain` | None | Compatible shared calculator/model, immutable backend models, interest strategies, outbound repository port |
 | `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | `domain` | JDBC repository adapter, dedicated result-set mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 
-Domain and application production code must not depend on frameworks. New backend modules must not depend on `legacy`.
+Domain and application production code must not depend on frameworks. Only domain uses the compatible mutable calculator API; application and adapters use the immutable backend model.
 
 ## Steps
 
