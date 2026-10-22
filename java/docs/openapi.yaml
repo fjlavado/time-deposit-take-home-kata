@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  title: Time Deposit API
+  version: 1.0.0
+  description: >-
+    Retrieves deposits and credits one month's interest per update invocation.
+    Rates are annual percentages divided by twelve. Only interest is rounded to
+    two decimal places using the starter's binary-double HALF_UP behavior.
+servers:
+  - url: http://localhost:8080
+paths:
+  /time-deposits:
+    get:
+      operationId: retrieveTimeDeposits
+      summary: Retrieve all time deposits, including their withdrawals
+      responses:
+        '200':
+          description: Deposits ordered by ID, or an empty list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeDeposit'
+  /time-deposits/balance-updates:
+    post:
+      operationId: updateTimeDepositBalances
+      summary: Apply and persist monthly interest to every deposit
+      description: >-
+        Non-idempotent: every invocation credits eligible deposits again, without
+        advancing days or deducting withdrawals. Basic earns 1%/12 after day 30;
+        student earns 3%/12 on days 31 through 365; premium earns 5%/12 after day 45.
+        Unknown plan names earn no interest. All updates commit in one transaction.
+      responses:
+        '204':
+          description: All balances updated successfully; no response body
+components:
+  schemas:
+    TimeDeposit:
+      type: object
+      additionalProperties: false
+      required: [id, planType, balance, days, withdrawals]
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        planType:
+          type: string
+          description: Exact stored plan name; unknown names are preserved
+          example: basic
+        balance:
+          type: number
+          format: double
+          example: 1000.83
+        days:
+          type: integer
+          format: int32
+          example: 31
+        withdrawals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Withdrawal'
+    Withdrawal:
+      type: object
+      additionalProperties: false
+      required: [id, amount, date]
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        amount:
+          type: number
+          example: 12.34
+        date:
+          type: string
+          format: date
+          example: '2026-01-02'
