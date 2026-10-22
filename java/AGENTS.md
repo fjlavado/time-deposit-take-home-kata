@@ -9,12 +9,12 @@
 
 ## Current project
 
-- Java 17, Maven, base package `org.ikigaidigital`.
-- Build configuration: `pom.xml`.
-- Production code: `src/main/java/org/ikigaidigital/`.
-- Tests: `src/test/java/org/ikigaidigital/`.
-- Existing test dependencies: JUnit Jupiter 5.9.0 and AssertJ 3.23.1.
-- The starter has no web framework, database integration, OpenAPI contract, or application entry point. Choose and configure suitable dependencies as implementation requires; do not assume these components already exist.
+- Java 25 compilation target, Maven, Spring Boot 4.1.1, base package `org.ikigaidigital`. JDK 27 can compile the target with `--release 25`.
+- Build configuration: root `pom.xml` is a multi-module parent/aggregator; see `IMPLEMENTATION_PLAN.md` for module boundaries and progress.
+- Existing production code: `src/main/java/org/ikigaidigital/`, built by the `legacy` module.
+- Existing tests: `src/test/java/org/ikigaidigital/`, built by the `legacy` module.
+- Keep existing classes and tests unchanged until their separately agreed refactoring plan. Add new backend code and tests in their corresponding modules.
+- Test dependencies are centrally managed by the Boot parent.
 - `TimeDepositCalculatorTest.updateBalance_Test` currently contains a tautological assertion. A passing starter suite does not establish behavioral coverage.
 
 ## Compatibility requirements
@@ -67,14 +67,14 @@ The README explicitly states that the existing calculator is correct. Its implem
 
 ## Verification
 
-Run commands from `java/` with a Java 17 JDK and Maven installed:
+Run commands from `java/` with a JDK supporting release 25 (including JDK 27) and Maven installed:
 
 ```sh
 mvn test
 mvn verify
 ```
 
-- Replace the placeholder assertion with meaningful characterization coverage before refactoring calculation behavior.
+- Preserve the placeholder test for now, per the user's scope; add independent behavioral coverage in the new modules. Replace it only under the later legacy-refactoring plan.
 - Cover each plan, eligibility boundaries (days 30/31, 45/46, and 365/366), rounding, unknown plan values, an empty list, and multiple deposits. Verify both expected balances and in-place updates.
 - Add API and persistence integration coverage as those components are implemented: retrieval shape including withdrawals, bulk update persistence, and decimal/date mappings.
 - Use Testcontainers as preferred by the README for real-database integration tests. Document Docker prerequisites and any Maven profile or lifecycle configuration introduced so the tests are reproducible.
@@ -83,7 +83,7 @@ mvn verify
 
 ## Meaningful commits: apply every time
 
-- The user has authorized commits for completed work. After each verified, coherent change, create a meaningful commit as part of completing the task; apply this workflow to every subsequent change.
+- Keep completed work ready for atomic commits. Create commits only when the user explicitly requests them, following the harness instructions.
 - Keep commits atomic: one logical purpose per commit, with the implementation, relevant tests, and supporting documentation together. Split unrelated changes into separate commits and keep each commit buildable.
 - Use Conventional Commit messages: `<type>(<scope>): <imperative summary>`. Use types such as `feat`, `fix`, `refactor`, `test`, `docs`, `build`, or `chore`, and a descriptive scope such as `java`, `interest`, or `api`.
 - Describe the outcome rather than the editing activity. For example, use `test(interest): cover student eligibility boundaries` instead of `update tests`. Add a body when the reason, assumptions, or compatibility constraints need explanation.
