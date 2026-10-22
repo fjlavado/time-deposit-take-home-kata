@@ -8,9 +8,10 @@ starter-code refactor deferred by the earlier backend plans.
 
 Preserve the `TimeDeposit` public API, public no-argument calculator construction,
 `public void updateBalance(List<TimeDeposit> xs)`, and in-place balance updates.
-The backend retains its immutable domain model; `MonthlyInterestCalculator` now adapts
-it to the shared Strategy calculator. The separate `legacy` module and duplicate
-interest policies were removed in the subsequent domain consolidation. Results and
+The backend now uses the original compatible `TimeDeposit` model, extended with
+read-only withdrawals, and invokes the Strategy calculator directly. The duplicate
+backend deposit, `PlanType`, and `MonthlyInterestCalculator` adapter were removed
+after the earlier consolidation of the `legacy` module and duplicate interest policies. Results and
 commit checkpoints below retain the commands/module names used at the time.
 
 ## Design

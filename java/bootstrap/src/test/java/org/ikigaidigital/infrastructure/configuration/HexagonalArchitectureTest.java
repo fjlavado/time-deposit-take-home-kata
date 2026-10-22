@@ -34,7 +34,8 @@ class HexagonalArchitectureTest {
     void applicationDependsOnlyOnJavaDomainAndItself() {
         classes().that().resideInAPackage("org.ikigaidigital.application..")
                 .should().onlyDependOnClassesThat()
-                .resideInAnyPackage("java..", "org.ikigaidigital.domain..", "org.ikigaidigital.application..")
+                .resideInAnyPackage("java..", "org.ikigaidigital.domain..", "org.ikigaidigital",
+                        "org.ikigaidigital.application..")
                 .check(BACKEND);
     }
 
@@ -90,10 +91,10 @@ class HexagonalArchitectureTest {
     }
 
     @Test
-    void onlyDomainUsesTheCompatibleMutableApiAndStrategies() {
+    void interestStrategiesRemainEncapsulatedByDomain() {
         noClasses().that().resideOutsideOfPackages(DOMAIN_PACKAGES)
                 .should().dependOnClassesThat()
-                .resideInAnyPackage("org.ikigaidigital", "org.ikigaidigital.interest..")
+                .resideInAPackage("org.ikigaidigital.interest..")
                 .check(BACKEND);
     }
 }

@@ -1,7 +1,7 @@
 package org.ikigaidigital.application.query.handler;
 
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 
 import java.util.List;

@@ -21,7 +21,7 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 
 | Module | Responsibility |
 | --- | --- |
-| `domain` | Compatible shared calculator/model, immutable backend models, extensible interest strategies, repository port; no framework dependencies |
+| `domain` | Single compatible deposit model, calculator, immutable withdrawal/balance values, extensible interest strategies, repository port; no framework dependencies |
 | `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | JDBC repository adapter, dedicated joined-row mapper, batched balance persistence, Flyway SQL |
@@ -159,14 +159,19 @@ Rates are interpreted as annual percentages credited monthly. Matching is case-s
 
 Calculation intentionally uses double arithmetic, `new BigDecimal(interest)`, HALF_UP rounding of interest to two places, and double addition. **The final balance is not separately rounded.** For example, two basic credits on 1000 produce `1001.6600000000001`, matching the established behavior. The database uses unconstrained PostgreSQL `NUMERIC` to avoid silently rounding that result; the JDBC adapter explicitly maps decimal storage to/from the domain's double balance. Withdrawal amounts remain `BigDecimal` throughout.
 
-New rules implement `InterestStrategy` and are supplied as a complete `Map<String, InterestStrategy>` registry to either calculator; the use cases and adapters do not need to change.
+New rules implement `InterestStrategy` and are supplied as a complete `Map<String, InterestStrategy>` registry to `TimeDepositCalculator`; the use cases and adapters do not need to change.
 
 The compatible starter API and its tests now live in `domain/src/`; the separate
 `legacy` module has been removed. Original package names are retained to preserve
-source compatibility. `MonthlyInterestCalculator` adapts the immutable backend model
-to the shared calculator and returns an updated copy, preserving metadata and withdrawals.
-Eligibility, rates, rounding, and balance credits use the same implementation for both
-APIs; the duplicate `InterestPolicy` and `AnnualRateInterestPolicy` types were removed.
+source compatibility. `org.ikigaidigital.TimeDeposit` is the single deposit model
+used by the calculator, application, and adapters. Its four-argument constructor
+defaults to no withdrawals; an additional constructor accepts a defensively copied,
+read-only withdrawals list exposed by `getWithdrawals()`. Plan types remain exact
+strings, including unknown future values. The update handler passes the loaded
+deposits directly to `TimeDepositCalculator.updateBalance` and saves their balances
+in the same transaction. Interest updates mutate only balances in place, preserving
+metadata and withdrawals. The duplicate backend deposit, `PlanType` wrapper, and
+`MonthlyInterestCalculator` conversion layer have been removed.
 The shared calculator delegates to `InterestStrategy` implementations for basic, student, and premium
 plans. `new TimeDepositCalculator()` retains all existing plans; the additional
 constructor accepts a complete `Map<String, InterestStrategy>` registry to register
@@ -202,8 +207,8 @@ an immutable `Balance` value object and encapsulates interest credits through
 `deposit.updateBalance(interest)`. `Balance.addInterest` returns a new value; the
 deposit replaces its balance in place. Interest is already rounded by the strategy
 helper, and neither the value object nor the deposit rounds the final balance.
-The placeholder test has been replaced with 60 characterization cases; 75 further
-cases cover strategies, resolution, extension, balance values, and deposit updates. See
+The placeholder test has been replaced with 60 characterization cases; additional
+cases cover strategies, resolution, extension, balance values, deposit updates, and withdrawal immutability. See
 [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.
 
 ## Flyway schema evolution

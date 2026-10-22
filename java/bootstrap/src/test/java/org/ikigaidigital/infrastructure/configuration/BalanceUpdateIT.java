@@ -1,5 +1,7 @@
 package org.ikigaidigital.infrastructure.configuration;
 
+import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
 import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;
@@ -8,8 +10,6 @@ import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.Query;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
-import org.ikigaidigital.domain.interest.MonthlyInterestCalculator;
-import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +54,7 @@ class BalanceUpdateIT {
     @Autowired TimeDepositRepository repository;
     @Autowired QueryBus queries;
     @Autowired CommandBus commands;
-    @Autowired MonthlyInterestCalculator calculator;
+    @Autowired TimeDepositCalculator calculator;
     @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
@@ -72,9 +72,9 @@ class BalanceUpdateIT {
     void bootMigratesDatabaseAndWiresTransactionalCommandDispatch() {
         commands.dispatch(new UpdateTimeDepositBalancesCommand());
 
-        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery())).extracting(TimeDeposit::balance)
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery())).extracting(TimeDeposit::getBalance)
                 .containsExactly(1000.83, 1002.5, 1004.17, 1000.0);
-        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery()).getFirst().withdrawals()).hasSize(1);
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery()).getFirst().getWithdrawals()).hasSize(1);
     }
 
     @Test
@@ -104,7 +104,7 @@ class BalanceUpdateIT {
         assertThatThrownBy(() -> transactional.dispatch(new UpdateTimeDepositBalancesCommand()))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(repository.findAll()).extracting(TimeDeposit::balance)
+        assertThat(repository.findAll()).extracting(TimeDeposit::getBalance)
                 .containsExactly(1000.0, 1000.0, 1000.0, 1000.0);
     }
 
@@ -125,7 +125,7 @@ class BalanceUpdateIT {
             second.get(20, TimeUnit.SECONDS);
         }
 
-        assertThat(repository.findAll().get(1).balance()).isEqualTo(1005.01);
+        assertThat(repository.findAll().get(1).getBalance()).isEqualTo(1005.01);
     }
 
     @Test

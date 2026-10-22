@@ -5,8 +5,7 @@ import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
-import org.ikigaidigital.domain.model.PlanType;
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
@@ -47,7 +46,7 @@ class TimeDepositControllerTest {
 
     @Test
     void retrievesExactResponseFieldsAndWithdrawalRepresentation() throws Exception {
-        var deposit = new TimeDeposit(1, PlanType.BASIC, 1000, 31,
+        var deposit = new TimeDeposit(1, "basic", 1000.0, 31,
                 List.of(new Withdrawal(2, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
         when(queries.dispatch(new RetrieveTimeDepositsQuery())).thenReturn(List.of(deposit));
         var mvc = MockMvcBuilders.standaloneSetup(controller()).build();

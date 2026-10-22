@@ -1,6 +1,6 @@
 package org.ikigaidigital.infrastructure.persistence;
 
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositResultSetMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -46,8 +46,8 @@ public final class JdbcTimeDepositRepository implements TimeDepositRepository {
         jdbc.batchUpdate("UPDATE \"timeDeposits\" SET balance = ? WHERE id = ?", deposits, 100,
                 (statement, deposit) -> {
                     // Decimal storage, explicit conversion at the boundary to compatible double arithmetic.
-                    statement.setBigDecimal(1, BigDecimal.valueOf(deposit.balance()));
-                    statement.setInt(2, deposit.id());
+                    statement.setBigDecimal(1, BigDecimal.valueOf(deposit.getBalance()));
+                    statement.setInt(2, deposit.getId());
                 });
     }
 }

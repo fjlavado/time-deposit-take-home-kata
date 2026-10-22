@@ -150,7 +150,7 @@ in `CALCULATOR_REFACTOR_PLAN.md`; delivery documentation is committed separately
 On the user's request to move `legacy` into `domain` and remove unnecessary policy
 code, OpenCode with `openai/gpt-6.1-sol` moved the shared sources and tests into
 `domain/src/`, retained their public packages, and removed the `legacy` Maven module.
-`MonthlyInterestCalculator` now adapts immutable backend deposits to the shared
+At that checkpoint, `MonthlyInterestCalculator` adapted immutable backend deposits to the shared
 Strategy calculator instead of duplicating eligibility, rates, or rounding through
 `InterestPolicy` and `AnnualRateInterestPolicy`. Architecture checks include the
 compatible public packages in the framework-free domain layer and confine their
@@ -160,3 +160,22 @@ the unified calculation path; agent guidance and module documentation were updat
 `mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify`
 passed on JDK 27 with release 25: 178 non-integration cases (160 in domain) and
 11 real PostgreSQL integration cases, without failures, errors, or skips.
+
+## Single deposit model
+
+On the user's request to simplify the two `TimeDeposit` classes, OpenCode with
+`openai/gpt-6.1-sol` retained `org.ikigaidigital.TimeDeposit` as the single domain
+model, preserving its original constructor and mutable balance API. It added a
+constructor and getter for defensively copied, read-only withdrawals, migrated
+application and adapters to that model, and removed the duplicate backend record,
+`PlanType` wrapper, and `MonthlyInterestCalculator` conversion layer. The command
+handler now calls `TimeDepositCalculator` directly. Architecture rules and agent
+guidance reflect the shared domain model. Redundant adapter-calculator tests were
+removed in favor of existing strategy/rounding coverage; withdrawal immutability
+and pre-mutation metadata snapshots cover the model consolidation.
+
+`mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify`
+passed on JDK 27 with release 25: 155 non-integration cases (137 in domain) and
+11 real PostgreSQL integration cases, without failures, errors, or skips. The
+integration suite covers API responses, persistence mappings, transaction rollback,
+and concurrent balance updates.

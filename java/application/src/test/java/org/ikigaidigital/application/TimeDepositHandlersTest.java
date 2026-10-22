@@ -1,14 +1,13 @@
 package org.ikigaidigital.application;
 
+import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.bus.DefaultQueryBus;
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
 import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
-import org.ikigaidigital.domain.interest.MonthlyInterestCalculator;
-import org.ikigaidigital.domain.model.PlanType;
-import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.junit.jupiter.api.Test;
@@ -22,26 +21,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TimeDepositHandlersTest {
     @Test
     void retrievesDepositsIncludingWithdrawalsWithoutUpdatingThem() {
-        var deposits = List.of(deposit(1, PlanType.BASIC, 31));
+        var deposits = List.of(deposit(1, "basic", 31));
         var repository = new InMemoryRepository(deposits);
 
         assertThat(queryBus(repository).dispatch(new RetrieveTimeDepositsQuery())).isEqualTo(deposits);
         assertThat(repository.saveCalls).isZero();
         assertThat(repository.updateReads).isZero();
+        assertThat(deposits.getFirst().getBalance()).isEqualTo(1000.0);
+        assertThat(deposits.getFirst().getWithdrawals()).hasSize(1);
     }
 
     @Test
     void updatesEveryDepositAndSavesTheResultsTogether() {
-        var original = List.of(deposit(1, PlanType.BASIC, 31), deposit(2, PlanType.STUDENT, 365),
-                deposit(3, PlanType.PREMIUM, 46), deposit(4, PlanType.STUDENT, 366));
+        var original = List.of(deposit(1, "basic", 31), deposit(2, "student", 365),
+                deposit(3, "premium", 46), deposit(4, "student", 366));
+        var metadata = original.stream().map(DepositMetadata::snapshot).toList();
         var repository = new InMemoryRepository(original);
         commandBus(repository).dispatch(new UpdateTimeDepositBalancesCommand());
 
-        assertThat(repository.deposits).extracting(TimeDeposit::balance)
+        assertThat(repository.deposits).extracting(TimeDeposit::getBalance)
                 .containsExactly(1000.83, 1002.5, 1004.17, 1000.0);
         for (int i = 0; i < original.size(); i++) {
-            assertThat(repository.deposits.get(i)).usingRecursiveComparison().ignoringFields("balance")
-                    .isEqualTo(original.get(i));
+            assertThat(repository.deposits.get(i)).isSameAs(original.get(i));
+            assertThat(DepositMetadata.snapshot(repository.deposits.get(i))).isEqualTo(metadata.get(i));
         }
         assertThat(repository.updateReads).isEqualTo(1);
         assertThat(repository.saveCalls).isEqualTo(1);
@@ -59,16 +61,23 @@ class TimeDepositHandlersTest {
 
     private static DefaultCommandBus commandBus(TimeDepositRepository repository) {
         return new DefaultCommandBus(List.of(new UpdateTimeDepositBalancesCommandHandler(repository,
-                MonthlyInterestCalculator.standardPlans())));
+                new TimeDepositCalculator())));
     }
 
     private static DefaultQueryBus queryBus(TimeDepositRepository repository) {
         return new DefaultQueryBus(List.of(new RetrieveTimeDepositsQueryHandler(repository)));
     }
 
-    private static TimeDeposit deposit(int id, PlanType plan, int days) {
-        return new TimeDeposit(id, plan, 1000, days,
+    private static TimeDeposit deposit(int id, String plan, int days) {
+        return new TimeDeposit(id, plan, 1000.0, days,
                 List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
+    }
+
+    private record DepositMetadata(int id, String planType, int days, List<Withdrawal> withdrawals) {
+        static DepositMetadata snapshot(TimeDeposit deposit) {
+            return new DepositMetadata(deposit.getId(), deposit.getPlanType(), deposit.getDays(),
+                    List.copyOf(deposit.getWithdrawals()));
+        }
     }
 
     private static final class InMemoryRepository implements TimeDepositRepository {

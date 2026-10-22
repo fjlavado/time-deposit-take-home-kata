@@ -1,8 +1,7 @@
 package org.ikigaidigital.infrastructure.persistence;
 
 import org.flywaydb.core.Flyway;
-import org.ikigaidigital.domain.model.PlanType;
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositResultSetMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,12 +76,12 @@ class JdbcTimeDepositRepositoryIT {
         var deposits = repository.findAll();
 
         assertThat(deposits).hasSize(2);
-        assertThat(deposits.getFirst().balance()).isEqualTo(123.456);
-        assertThat(deposits.getFirst().withdrawals()).hasSize(2);
-        assertThat(deposits.getFirst().withdrawals().getFirst().amount()).isEqualByComparingTo("12.3456");
-        assertThat(deposits.getFirst().withdrawals().getFirst().date()).isEqualTo(LocalDate.of(2026, 1, 2));
-        assertThat(deposits.get(1).planType().value()).isEqualTo("FuturePlan");
-        assertThat(deposits.get(1).withdrawals()).isEmpty();
+        assertThat(deposits.getFirst().getBalance()).isEqualTo(123.456);
+        assertThat(deposits.getFirst().getWithdrawals()).hasSize(2);
+        assertThat(deposits.getFirst().getWithdrawals().getFirst().amount()).isEqualByComparingTo("12.3456");
+        assertThat(deposits.getFirst().getWithdrawals().getFirst().date()).isEqualTo(LocalDate.of(2026, 1, 2));
+        assertThat(deposits.get(1).getPlanType()).isEqualTo("FuturePlan");
+        assertThat(deposits.get(1).getWithdrawals()).isEmpty();
     }
 
     @Test
@@ -94,14 +93,14 @@ class JdbcTimeDepositRepositoryIT {
         transaction.executeWithoutResult(status -> {
             repository.findAllForBalanceUpdate();
             // Deliberately different metadata verifies that persistence changes balances only.
-            repository.saveBalances(List.of(new TimeDeposit(1, PlanType.PREMIUM, balance, 99, List.of())));
+            repository.saveBalances(List.of(new TimeDeposit(1, "premium", balance, 99, List.of())));
         });
 
         var actual = repository.findAll().getFirst();
-        assertThat(actual.balance()).isEqualTo(balance);
-        assertThat(actual.planType()).isEqualTo(PlanType.BASIC);
-        assertThat(actual.days()).isEqualTo(31);
-        assertThat(actual.withdrawals()).hasSize(1);
+        assertThat(actual.getBalance()).isEqualTo(balance);
+        assertThat(actual.getPlanType()).isEqualTo("basic");
+        assertThat(actual.getDays()).isEqualTo(31);
+        assertThat(actual.getWithdrawals()).hasSize(1);
         assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 1", BigDecimal.class))
                 .isEqualByComparingTo(BigDecimal.valueOf(balance));
     }

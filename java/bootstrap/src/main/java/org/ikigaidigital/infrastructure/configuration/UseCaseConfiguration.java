@@ -1,5 +1,6 @@
 package org.ikigaidigital.infrastructure.configuration;
 
+import org.ikigaidigital.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.bus.DefaultQueryBus;
 import org.ikigaidigital.application.command.handler.CommandHandler;
@@ -8,7 +9,6 @@ import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
-import org.ikigaidigital.domain.interest.MonthlyInterestCalculator;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,8 +20,8 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 public class UseCaseConfiguration {
     @Bean
-    MonthlyInterestCalculator monthlyInterestCalculator() {
-        return MonthlyInterestCalculator.standardPlans();
+    TimeDepositCalculator timeDepositCalculator() {
+        return new TimeDepositCalculator();
     }
 
     @Bean
@@ -31,7 +31,7 @@ public class UseCaseConfiguration {
 
     @Bean
     UpdateTimeDepositBalancesCommandHandler updateTimeDepositBalancesCommandHandler(TimeDepositRepository repository,
-                                                                                   MonthlyInterestCalculator calculator) {
+                                                                                   TimeDepositCalculator calculator) {
         return new UpdateTimeDepositBalancesCommandHandler(repository, calculator);
     }
 

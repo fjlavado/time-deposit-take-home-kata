@@ -1,6 +1,6 @@
 package org.ikigaidigital.domain.port.out;
 
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 
 import java.util.List;
 

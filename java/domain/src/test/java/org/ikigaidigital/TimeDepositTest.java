@@ -1,10 +1,45 @@
 package org.ikigaidigital;
 
+import org.ikigaidigital.domain.model.Withdrawal;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TimeDepositTest {
+    @Test
+    void existingConstructorDefaultsToNoWithdrawals() {
+        var deposit = new TimeDeposit(1, "basic", 1000.0, 31);
+
+        assertThat(deposit.getWithdrawals()).isEmpty();
+    }
+
+    @Test
+    void snapshotsWithdrawalsAndKeepsThemReadOnlyAcrossBalanceChanges() {
+        var withdrawal = new Withdrawal(2, new BigDecimal("2.50"), LocalDate.of(2026, 1, 2));
+        var withdrawals = new ArrayList<>(List.of(withdrawal));
+        var deposit = new TimeDeposit(1, "basic", 12.345, 31, withdrawals);
+        withdrawals.clear();
+
+        new TimeDepositCalculator().updateBalance(List.of(deposit));
+
+        assertThat(deposit.getBalance()).isEqualTo(12.345 + 0.01);
+        assertThat(deposit.getId()).isEqualTo(1);
+        assertThat(deposit.getPlanType()).isEqualTo("basic");
+        assertThat(deposit.getDays()).isEqualTo(31);
+        assertThat(deposit.getWithdrawals()).containsExactly(withdrawal);
+        assertThatThrownBy(() -> deposit.getWithdrawals().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        deposit.setBalance(2000.0);
+        assertThat(deposit.getWithdrawals()).containsExactly(withdrawal);
+    }
+
     @Test
     void updatesTheBalanceWithoutChangingDepositMetadata() {
         TimeDeposit deposit = new TimeDeposit(7, "basic", 1234.567, 31);

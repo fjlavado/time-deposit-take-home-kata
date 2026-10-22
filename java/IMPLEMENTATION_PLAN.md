@@ -38,14 +38,14 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 | Module | Project dependencies | Responsibility |
 | --- | --- | --- |
-| `domain` | None | Compatible shared calculator/model, immutable backend models, interest strategies, outbound repository port |
+| `domain` | None | Single compatible deposit model/calculator, immutable withdrawal/balance values, interest strategies, outbound repository port |
 | `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | `domain` | JDBC repository adapter, dedicated result-set mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 
-Domain and application production code must not depend on frameworks. Only domain uses the compatible mutable calculator API; application and adapters use the immutable backend model.
+Domain and application production code must not depend on frameworks. Application and adapters use the shared `org.ikigaidigital.TimeDeposit` model; the update handler invokes the compatible calculator directly before saving balances. Strategy details remain encapsulated in domain.
 
 ## Steps
 
@@ -57,7 +57,7 @@ Domain and application production code must not depend on frameworks. Only domai
 
 ### 2. Domain — `feat(domain): model deposits and monthly interest rules`
 
-- [x] Introduce immutable deposit, plan-type, and withdrawal models.
+- [x] Model deposits and withdrawals. Subsequently simplified to the original compatible mutable `TimeDeposit`, with read-only withdrawals and string plan types; removed the duplicate immutable deposit and plan wrapper.
 - [x] Separate interest eligibility/rates from application orchestration.
 - [x] Preserve established arithmetic: double interest, `new BigDecimal(interest)`, HALF_UP to two decimals, then double addition without rounding the final balance.
 - [x] Cover basic (`days > 30`, 1%/12), student (`30 < days < 366`, 3%/12), premium (`days > 45`, 5%/12), unknown plans, rounding, and repeated updates.

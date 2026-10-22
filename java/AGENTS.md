@@ -15,7 +15,7 @@
 - Shared and backend domain tests: `domain/src/test/java/org/ikigaidigital/`, built by the `domain` module.
 - The starter calculator's separately requested Strategy refactor is documented in `CALCULATOR_REFACTOR_PLAN.md`. Preserve its compatible API and keep new backend code/tests in their corresponding modules.
 - Test dependencies are centrally managed by the Boot parent.
-- The starter suite now has 60 characterization cases plus 75 strategy/resolver/extension/value-object cases. Maintain meaningful behavioral assertions when adding plans.
+- The shared suite has 60 characterization cases plus strategy/resolver/extension/value-object and withdrawal cases. Maintain meaningful behavioral assertions when adding plans.
 
 ## Compatibility requirements
 
@@ -24,7 +24,7 @@
 - The calculator mutates each supplied deposit's balance in place. Preserve that behavior.
 - The starter deposit encapsulates immutable `Balance` values. Credit strategy-rounded interest through `TimeDeposit.updateBalance(double)`; retain the original `Double` getter/replacement setter for compatibility. Shared rounding is in `InterestStrategy.calculateInterestRounded`.
 - Do not increment `days`, deduct withdrawals, or introduce other balance adjustments without a requirement supporting that behavior.
-- Refactor internals behind compatible interfaces. Use separate persistence models and API DTOs where needed rather than forcing database or response requirements into the shared class.
+- Use `org.ikigaidigital.TimeDeposit` as the single domain deposit model, including a defensively copied, read-only withdrawals list. Preserve the four-argument constructor, which defaults to no withdrawals. Keep database mapping and generated API DTOs in adapters.
 
 ## Interest calculation: preserve observed behavior
 
@@ -64,7 +64,7 @@ The README explicitly states that the existing calculator is correct. Its implem
 - The backend uses typed command/query records, dedicated handlers, and synchronous buses. Controllers depend on `application.port.in.CommandBus` and `QueryBus`; bootstrap wires handlers and the transactional command-bus decorator. Follow `HEXAGONAL_REFACTOR_PLAN.md` for the completed refactor and preserve these boundaries.
 - Keep the design proportional to the kata. Apply SOLID principles and introduce small, focused abstractions where they make interest rules easier to extend.
 - Separate plan eligibility/rate logic from orchestration and infrastructure so future interest complexities can be added without rewriting the API or persistence layer.
-- Use the shared `InterestStrategy` implementations for both calculator APIs. `MonthlyInterestCalculator` adapts immutable backend deposits to the compatible mutable calculator; do not reintroduce duplicate policies or rounding logic. Retain the original public packages for compatibility; architecture rules treat them as part of domain.
+- Use `TimeDepositCalculator` directly in the update handler to mutate repository-loaded deposits before saving their balances. Do not reintroduce duplicate models, calculator adapters, policies, or rounding logic. Retain the original public packages for compatibility; architecture rules treat them as part of domain and allow application/adapters to use the shared model.
 - Use an OpenAPI/Swagger contract describing both operations, response schemas, and how to invoke them.
 - Keep Java package names, source layout, and coding style consistent with the existing project.
 

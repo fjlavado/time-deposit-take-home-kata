@@ -1,7 +1,6 @@
 package org.ikigaidigital.infrastructure.persistence.mapper;
 
-import org.ikigaidigital.domain.model.PlanType;
-import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.springframework.jdbc.core.ResultSetExtractor;
 
@@ -20,7 +19,7 @@ public final class TimeDepositResultSetMapper implements ResultSetExtractor<List
             int id = rows.getInt("id");
             var deposit = deposits.get(id);
             if (deposit == null) {
-                deposit = new DepositRow(id, new PlanType(rows.getString("planType")),
+                deposit = new DepositRow(id, rows.getString("planType"),
                         rows.getBigDecimal("balance").doubleValue(), rows.getInt("days"), new ArrayList<>());
                 deposits.put(id, deposit);
             }
@@ -33,7 +32,7 @@ public final class TimeDepositResultSetMapper implements ResultSetExtractor<List
         return deposits.values().stream().map(DepositRow::toDomain).toList();
     }
 
-    private record DepositRow(int id, PlanType planType, double balance, int days, List<Withdrawal> withdrawals) {
+    private record DepositRow(int id, String planType, double balance, int days, List<Withdrawal> withdrawals) {
         TimeDeposit toDomain() {
             return new TimeDeposit(id, planType, balance, days, withdrawals);
         }
