@@ -1,6 +1,8 @@
 # Time Deposit Backend Implementation Plan
 
-Status: all seven implementation steps completed and verified on 2026-10-22. Legacy refactoring remains deferred.
+Status: all seven implementation steps completed and verified on 2026-10-22. The subsequent
+[Doodle-inspired hexagonal refactor](HEXAGONAL_REFACTOR_PLAN.md) is also complete and verified.
+Legacy refactoring remains deferred.
 
 ## Implementation commits
 
@@ -33,11 +35,11 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 | --- | --- | --- |
 | `legacy` | None | Builds existing `../src/` without moving or modifying it |
 | `domain` | None | Models, interest policies, outbound repository port |
-| `application` | `domain` | Inbound ports and framework-free interactors |
+| `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | `domain` | JDBC repository, mappings, versioned SQL migrations |
-| `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs and use-case controller |
-| `bootstrap` | `domain`, `application`, both adapters | Composition root, transactions, executable Boot application |
+| `adapter/adapter-persistence` | `domain` | JDBC repository adapter, dedicated result-set mapper, versioned SQL migrations |
+| `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
+| `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 
 Domain and application production code must not depend on frameworks. New backend modules must not depend on `legacy`.
 
@@ -119,3 +121,4 @@ Domain and application production code must not depend on frameworks. New backen
 - Commit verification: exported each staged checkpoint using `git checkout-index` into `/tmp/opencode/time-deposit-commit-check/` and ran `mvn -q verify` against that snapshot. Steps 6–7 used the local Docker override. Every checkpoint passed; the complete API checkpoint passed all 47 cases.
 - Adapter module refactor: moved both adapters under the `adapter` Maven parent/aggregator. `mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25: all 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips. The OpenAPI resource and Flyway migrations load successfully from the nested modules.
 - Contract-first web refactor: OpenAPI Generator 7.26.0 now generates the Spring API interface and response models from `docs/openapi.yaml` during Maven's `generate-sources` phase. The controller implements the generated interface; handwritten response DTOs and HTTP mappings were removed. `mvn -B -pl adapter/adapter-web -am generate-sources`, `mvn -B clean test`, and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25. All 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips, including generated mapping/status inheritance, response fields, decimal/date serialization, and persisted updates.
+- Doodle-inspired hexagonal refactor: `mvn -B -pl application -am verify`, `mvn -B clean test`, and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25. The final reactor passed 44 unit/controller/contract/architecture/legacy cases and 11 PostgreSQL integration cases without failures, errors, or skips. The new buses, handlers, adapter mappers, transaction decoration, and architecture rules are tracked with commit checkpoints in [HEXAGONAL_REFACTOR_PLAN.md](HEXAGONAL_REFACTOR_PLAN.md).

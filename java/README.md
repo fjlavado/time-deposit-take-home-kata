@@ -1,18 +1,19 @@
 # Time Deposit backend
 
 Java 25 target, Maven multi-module build, Spring Boot 4.1.1, PostgreSQL, Spring JDBC, and Flyway.
-The implementation follows the [assignment](../README.md) and the tracked [implementation plan](IMPLEMENTATION_PLAN.md).
+The implementation follows the [assignment](../README.md), the tracked [implementation plan](IMPLEMENTATION_PLAN.md),
+and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md).
 
 ## Architecture
 
 ```text
-                     bootstrap (Spring configuration + transactions)
+                     bootstrap (Spring wiring + command transaction)
                         /                               \
             adapter-web                           adapter-persistence
                  |                                       |
-          application inbound ports                      |
+          CommandBus / QueryBus ports                    |
                  |                                       |
-          application services                           |
+          typed requests -> handlers                     |
                  +----------> domain <--------------------+
                             models, rules,
                             outbound ports
@@ -23,14 +24,25 @@ legacy: isolated starter code, not used by the new backend
 | Module | Responsibility |
 | --- | --- |
 | `domain` | Immutable models, extensible interest policies, repository port; no framework dependencies |
-| `application` | Inbound use-case ports and constructor-injected interactors; depends only on domain |
+| `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | JDBC mapping, joined withdrawal retrieval, batched balance persistence, Flyway SQL |
-| `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, use-case controller, contract tests |
-| `bootstrap` | Executable application, explicit wiring, transactional update decorator, architecture/end-to-end tests |
+| `adapter/adapter-persistence` | JDBC repository adapter, dedicated joined-row mapper, batched balance persistence, Flyway SQL |
+| `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
+| `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
 | `legacy` | Builds the original `src/` classes and tests in place, without modifying them |
 
-ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of inbound ports, and the absence of legacy dependencies. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
+ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and the absence of legacy dependencies. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
+
+### Command and query flow
+
+This structure adopts Doodle's synchronous command/query bus pattern within the existing module boundaries.
+
+- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through the `CommandBus` port. Bootstrap provides `TransactionalCommandBus`, which opens a transaction before delegating to `DefaultCommandBus`. The registered `UpdateTimeDepositBalancesCommandHandler` loads and locks deposits through the domain repository port, applies the existing interest calculator, and persists balances. Commit completes before the HTTP response.
+- **GET**: the controller dispatches `RetrieveTimeDepositsQuery` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which retrieves deposits including withdrawals. `TimeDepositApiMapper` converts them to generated response models. Query dispatch does not start a transaction. Reads use the same persisted model, so a subsequent GET sees a completed POST's updates.
+
+The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`; the update uses `Void` because it has no response payload. The runtime registry casts are confined to the dispatchers.
+
+`UseCaseConfiguration` registers handlers and constructs both buses. `PersistenceAdapterConfiguration` supplies the JDBC adapter and result-set mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions continue to use `InterestPolicy`.
 
 ## Build and test
 
@@ -119,7 +131,7 @@ mvn -pl adapter/adapter-web -am generate-sources
 
 Generated `TimeDepositsApi`, `TimeDepositResponse`, and `WithdrawalResponse` sources live under `adapter/adapter-web/target/generated-sources/openapi/src/main/java/`, in `org.ikigaidigital.infrastructure.web.generated` subpackages. Maven adds that directory to compilation automatically. Generated files are build output: edit the contract and regenerate rather than editing or committing them.
 
-`TimeDepositController` implements the generated interface and contains only use-case delegation and domain-to-response mapping. The generator emits abstract operation signatures so contract changes must be implemented at compile time. The contract's `double` balance, decimal withdrawal amount (`BigDecimal`), and date (`LocalDate`) mappings preserve the existing response representation.
+`TimeDepositController` implements the generated interface, dispatches typed command/query records, and delegates domain-to-response conversion to `TimeDepositApiMapper`. The generator emits abstract operation signatures so contract changes must be implemented at compile time. The contract's `double` balance, decimal withdrawal amount (`BigDecimal`), and date (`LocalDate`) mappings preserve the existing response representation.
 
 ### Swagger contract
 
@@ -166,4 +178,4 @@ Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/
 
 ## AI-assisted workflow
 
-See [AI_WORKFLOW.md](AI_WORKFLOW.md) for the actual harness, model, instructions, setup, and assisted work. Progress, verification results, and the seven implementation commits are tracked in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+See [AI_WORKFLOW.md](AI_WORKFLOW.md) for the actual harness, model, instructions, setup, and assisted work. Original implementation progress is tracked in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); the command/query refactor checkpoints and verification results are tracked in [HEXAGONAL_REFACTOR_PLAN.md](HEXAGONAL_REFACTOR_PLAN.md).

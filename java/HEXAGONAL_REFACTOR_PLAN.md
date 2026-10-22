@@ -53,15 +53,15 @@ Acceptance: one command/query execution path per operation, preserving the HTTP 
 
 ### 7. Enforce architecture and document
 - [x] Enforce core purity, inward dependencies, adapter isolation, and controller bus-port use.
-- [ ] Update README, IMPLEMENTATION_PLAN, and AI_WORKFLOW.
+- [x] Update README, IMPLEMENTATION_PLAN, and AI_WORKFLOW.
 Acceptance: architecture checks and documentation reflect the implemented execution path.
 
 ### 8. Verify delivery
 - [x] Run `mvn test` from `java/`.
 - [x] Run `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` from `java/`.
-- [ ] Run `git diff --check` and `git diff --exit-code -- java/src` from repository root.
+- [x] Run `git diff --check` and `git diff --exit-code -- java/src` from repository root.
 - [x] Confirm exactly two contract operations and retain every Maven module.
-- [ ] Record actual results and blockers below.
+- [x] Record actual results and blockers below.
 
 ## Delivery checkpoints
 
@@ -78,10 +78,14 @@ The user requested meaningful commits during implementation. Checkpoints:
 
 - Steps 1–3: `mvn -B -pl application -am verify` passed on JDK 27 with release 25:
   25 domain cases and 8 application/dispatch cases, no failures, errors, or skips.
-- Step 1 checkpoint: `e58b715` — `refactor(application): introduce typed command and query dispatch`.
+- First checkpoint: `e58b715` — `refactor(application): introduce typed command and query dispatch`.
 - Steps 4–6 and architecture enforcement: `mvn -B clean test` and
   `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25.
   All 44 unit/controller/contract/architecture/legacy cases and 11 PostgreSQL integration
   cases passed without failures, errors, or skips. This includes rollback, transaction-before-load,
   concurrent updates, query dispatch without a transaction, and real-HTTP compatibility.
-- Documentation and final diff review are in progress.
+- Second checkpoint: `d87926b` — `refactor(java): route adapters through transactional command dispatch`.
+- `git diff --check` and `git diff --exit-code -- java/src` passed. All original modules
+  and exactly two contract operations are retained. No verification blockers remain.
+- README, implementation tracking, agent guidance, and AI-workflow documentation now
+  describe the command/query structure and execution paths. All eight steps are complete.

@@ -60,6 +60,7 @@ The README explicitly states that the existing calculator is correct. Its implem
 ## Design and implementation
 
 - Follow the preferred hexagonal architecture: keep interest rules and use cases independent of HTTP and database frameworks; connect adapters through ports.
+- The backend uses typed command/query records, dedicated handlers, and synchronous buses. Controllers depend on `application.port.in.CommandBus` and `QueryBus`; bootstrap wires handlers and the transactional command-bus decorator. Follow `HEXAGONAL_REFACTOR_PLAN.md` for the completed refactor and preserve these boundaries.
 - Keep the design proportional to the kata. Apply SOLID principles and introduce small, focused abstractions where they make interest rules easier to extend.
 - Separate plan eligibility/rate logic from orchestration and infrastructure so future interest complexities can be added without rewriting the API or persistence layer.
 - Use an OpenAPI/Swagger contract describing both operations, response schemas, and how to invoke them.
