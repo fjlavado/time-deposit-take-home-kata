@@ -2,19 +2,16 @@ package org.ikigaidigital.infrastructure.web;
 
 import org.ikigaidigital.application.port.in.RetrieveTimeDepositsUseCase;
 import org.ikigaidigital.application.port.in.UpdateTimeDepositBalancesUseCase;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.infrastructure.web.generated.api.TimeDepositsApi;
+import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
+import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/time-deposits")
-public final class TimeDepositController {
+public final class TimeDepositController implements TimeDepositsApi {
     private final RetrieveTimeDepositsUseCase retrieve;
     private final UpdateTimeDepositBalancesUseCase update;
 
@@ -23,15 +20,21 @@ public final class TimeDepositController {
         this.update = update;
     }
 
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public List<TimeDepositResponse> retrieveAll() {
-        return retrieve.retrieveAll().stream().map(TimeDepositResponse::from).toList();
+    @Override
+    public List<TimeDepositResponse> retrieveTimeDeposits() {
+        return retrieve.retrieveAll().stream().map(TimeDepositController::toResponse).toList();
     }
 
-    @PostMapping("/balance-updates")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateBalances() {
+    @Override
+    public void updateTimeDepositBalances() {
         // Every invocation credits interest again; this command is intentionally non-idempotent.
         update.updateBalances();
+    }
+
+    private static TimeDepositResponse toResponse(TimeDeposit deposit) {
+        return new TimeDepositResponse(deposit.id(), deposit.planType().value(), deposit.balance(), deposit.days(),
+                deposit.withdrawals().stream()
+                        .map(withdrawal -> new WithdrawalResponse(withdrawal.id(), withdrawal.amount(), withdrawal.date()))
+                        .toList());
     }
 }

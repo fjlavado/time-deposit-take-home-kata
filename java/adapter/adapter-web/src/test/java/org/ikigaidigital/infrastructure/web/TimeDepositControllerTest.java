@@ -4,10 +4,13 @@ import io.swagger.v3.parser.OpenAPIV3Parser;
 import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
+import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
+import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -76,9 +79,14 @@ class TimeDepositControllerTest {
 
         assertThat(documented).containsExactlyInAnyOrder("GET /time-deposits", "POST /time-deposits/balance-updates");
         assertThat(implemented).isEqualTo(documented);
-        var schema = api.getComponents().getSchemas().get("TimeDeposit");
-        assertThat(schema.getProperties().keySet()).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(TimeDepositResponse.class.getRecordComponents()).map(component -> component.getName()).toList());
+        var responseTypes = List.of(TimeDepositResponse.class, WithdrawalResponse.class);
+        for (var responseType : responseTypes) {
+            var schema = api.getComponents().getSchemas().get(responseType.getSimpleName().replace("Response", ""));
+            assertThat(schema.getProperties().keySet()).containsExactlyInAnyOrderElementsOf(
+                    Arrays.stream(responseType.getDeclaredFields())
+                            .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                            .map(field -> field.getName()).toList());
+        }
         assertThat(api.getPaths().get("/time-deposits").getGet().getResponses()).containsKey("200");
         assertThat(api.getPaths().get("/time-deposits/balance-updates").getPost().getResponses()).containsKey("204");
     }

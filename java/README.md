@@ -26,7 +26,7 @@ legacy: isolated starter code, not used by the new backend
 | `application` | Inbound use-case ports and constructor-injected interactors; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | JDBC mapping, joined withdrawal retrieval, batched balance persistence, Flyway SQL |
-| `adapter/adapter-web` | Exactly two business operations, response DTOs, OpenAPI contract tests |
+| `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, use-case controller, contract tests |
 | `bootstrap` | Executable application, explicit wiring, transactional update decorator, architecture/end-to-end tests |
 | `legacy` | Builds the original `src/` classes and tests in place, without modifying them |
 
@@ -106,6 +106,20 @@ Example response object:
 The GET response is an array; deposits without withdrawals have `withdrawals: []`. Withdrawal fields are an explicit interpretation of the assignment's unspecified nested response shape.
 
 POST is intentionally non-idempotent: every call applies another interest credit. The entire load/calculate/persist operation runs in a single transaction. Deposits are locked in ID order to serialize concurrent balance updates. Days and withdrawals remain unchanged.
+
+### Contract-first code generation
+
+[`docs/openapi.yaml`](docs/openapi.yaml) is the source of truth for HTTP mappings, response statuses, and response models. The web adapter runs the pinned OpenAPI Generator Maven plugin (7.26.0, Spring generator with Spring Boot 4/Jackson 3 support) automatically during `generate-sources`, including when running `mvn test`, `mvn verify`, or `mvn package`.
+
+To generate the contract code on its own:
+
+```sh
+mvn -pl adapter/adapter-web -am generate-sources
+```
+
+Generated `TimeDepositsApi`, `TimeDepositResponse`, and `WithdrawalResponse` sources live under `adapter/adapter-web/target/generated-sources/openapi/src/main/java/`, in `org.ikigaidigital.infrastructure.web.generated` subpackages. Maven adds that directory to compilation automatically. Generated files are build output: edit the contract and regenerate rather than editing or committing them.
+
+`TimeDepositController` implements the generated interface and contains only use-case delegation and domain-to-response mapping. The generator emits abstract operation signatures so contract changes must be implemented at compile time. The contract's `double` balance, decimal withdrawal amount (`BigDecimal`), and date (`LocalDate`) mappings preserve the existing response representation.
 
 ### Swagger contract
 

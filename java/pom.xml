@@ -29,6 +29,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <archunit.version>1.5.1</archunit.version>
         <swagger-parser.version>2.1.48</swagger-parser.version>
+        <openapi-generator.version>7.26.0</openapi-generator.version>
     </properties>
 
     <build>

@@ -36,7 +36,7 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 | `application` | `domain` | Inbound ports and framework-free interactors |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | `domain` | JDBC repository, mappings, versioned SQL migrations |
-| `adapter/adapter-web` | `application`, `domain` | Controllers and response DTOs |
+| `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs and use-case controller |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactions, executable Boot application |
 
 Domain and application production code must not depend on frameworks. New backend modules must not depend on `legacy`.
@@ -118,3 +118,4 @@ Domain and application production code must not depend on frameworks. New backen
 - Environment: the inherited remote `DOCKER_HOST` timed out, but the local daemon responds. Integration commands use `DOCKER_HOST=unix:///var/run/docker.sock` without changing global configuration.
 - Commit verification: exported each staged checkpoint using `git checkout-index` into `/tmp/opencode/time-deposit-commit-check/` and ran `mvn -q verify` against that snapshot. Steps 6–7 used the local Docker override. Every checkpoint passed; the complete API checkpoint passed all 47 cases.
 - Adapter module refactor: moved both adapters under the `adapter` Maven parent/aggregator. `mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25: all 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips. The OpenAPI resource and Flyway migrations load successfully from the nested modules.
+- Contract-first web refactor: OpenAPI Generator 7.26.0 now generates the Spring API interface and response models from `docs/openapi.yaml` during Maven's `generate-sources` phase. The controller implements the generated interface; handwritten response DTOs and HTTP mappings were removed. `mvn -B -pl adapter/adapter-web -am generate-sources`, `mvn -B clean test`, and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25. All 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips, including generated mapping/status inheritance, response fields, decimal/date serialization, and persisted updates.
