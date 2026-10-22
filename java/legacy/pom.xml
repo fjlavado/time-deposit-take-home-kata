@@ -22,7 +22,7 @@
         </dependency>
     </dependencies>
     <build>
-        <!-- Keep the starter's classes and tests in place until their separate refactoring plan. -->
+        <!-- Build the compatible starter API and its strategy implementations in place. -->
         <sourceDirectory>${project.basedir}/../src/main/java</sourceDirectory>
         <testSourceDirectory>${project.basedir}/../src/test/java</testSourceDirectory>
     </build>
