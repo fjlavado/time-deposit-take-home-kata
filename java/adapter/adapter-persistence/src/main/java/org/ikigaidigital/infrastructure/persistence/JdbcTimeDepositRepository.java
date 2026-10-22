@@ -2,52 +2,57 @@ package org.ikigaidigital.infrastructure.persistence;
 
 import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
-import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositResultSetMapper;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.ikigaidigital.domain.model.Page;
+import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositIdTable;
+import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositTable;
+import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
+import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
+import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Comparator;
+import java.util.stream.StreamSupport;
 
 public final class JdbcTimeDepositRepository implements TimeDepositRepository {
-    private static final String SELECT_ALL = """
-            SELECT t.id, t."planType", t.balance, t.days,
-                   w.id AS withdrawal_id, w.amount, w.date
-            FROM "timeDeposits" t
-            LEFT JOIN withdrawals w ON w."timeDepositId" = t.id
-            ORDER BY t.id, w.id
-            """;
+    private final TimeDepositJdbcRepository deposits;
+    private final TimeDepositPageJdbcRepository pages;
+    private final TimeDepositPersistenceMapper mapper;
 
-    private final JdbcTemplate jdbc;
-    private final TimeDepositResultSetMapper mapper;
-
-    public JdbcTimeDepositRepository(JdbcTemplate jdbc, TimeDepositResultSetMapper mapper) {
-        this.jdbc = jdbc;
+    public JdbcTimeDepositRepository(TimeDepositJdbcRepository deposits, TimeDepositPageJdbcRepository pages,
+                                     TimeDepositPersistenceMapper mapper) {
+        this.deposits = deposits;
+        this.pages = pages;
         this.mapper = mapper;
     }
 
     @Override
-    public List<TimeDeposit> findAll() {
-        return jdbc.query(SELECT_ALL, mapper);
+    public Page<TimeDeposit> search(PageRequest request) {
+        // Use inherited paging and database ordering, never an unbounded in-memory slice.
+        var result = pages.findAll(org.springframework.data.domain.PageRequest.of(
+                request.page(), request.size(), Sort.by("id")));
+        // JDBC's paged aggregate read falls back to child queries. Page IDs, then use
+        // inherited findAllById for single-query loading of the bounded aggregate set.
+        var ids = result.getContent().stream().map(TimeDepositIdTable::id).toList();
+        var content = ids.isEmpty() ? List.<TimeDeposit>of()
+                : StreamSupport.stream(deposits.findAllById(ids).spliterator(), false)
+                        .sorted(Comparator.comparing(TimeDepositTable::id)).map(mapper::toDomain).toList();
+        return new Page<>(content,
+                result.getNumber(), result.getSize(), result.getTotalElements());
     }
 
     @Override
-    public List<TimeDeposit> findAllForBalanceUpdate() {
+    public void lockForBalanceUpdate() {
         // The outer use-case transaction holds locks until all balances are saved.
         // Stable lock order serializes concurrent updates without lost interest credits.
-        jdbc.queryForList("SELECT id FROM \"timeDeposits\" ORDER BY id FOR UPDATE", Integer.class);
-        return findAll();
+        deposits.lockAllForBalanceUpdate();
     }
 
     @Override
     public void saveBalances(List<TimeDeposit> deposits) {
-        if (deposits.isEmpty()) {
-            return;
-        }
-        jdbc.batchUpdate("UPDATE \"timeDeposits\" SET balance = ? WHERE id = ?", deposits, 100,
-                (statement, deposit) -> {
-                    // Decimal storage, explicit conversion at the boundary to compatible double arithmetic.
-                    statement.setBigDecimal(1, BigDecimal.valueOf(deposit.getBalance()));
-                    statement.setInt(2, deposit.getId());
-                });
+        deposits.forEach(deposit -> this.deposits.updateBalance(deposit.getId(),
+                BigDecimal.valueOf(deposit.getBalance())));
     }
 }

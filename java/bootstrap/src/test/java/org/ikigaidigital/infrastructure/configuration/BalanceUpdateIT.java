@@ -11,6 +11,8 @@ import org.ikigaidigital.application.query.Query;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.domain.model.Page;
+import org.ikigaidigital.domain.model.PageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -56,6 +59,7 @@ class BalanceUpdateIT {
     @Autowired CommandBus commands;
     @Autowired TimeDepositCalculator calculator;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired JdbcMappingContext mappingContext;
 
     @BeforeEach
     void resetData() {
@@ -70,31 +74,39 @@ class BalanceUpdateIT {
 
     @Test
     void bootMigratesDatabaseAndWiresTransactionalCommandDispatch() {
+        assertThat(mappingContext.isSingleQueryLoadingEnabled()).isTrue();
         commands.dispatch(new UpdateTimeDepositBalancesCommand());
 
-        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery())).extracting(TimeDeposit::getBalance)
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20)).content()).extracting(TimeDeposit::getBalance)
                 .containsExactly(1000.83, 1002.5, 1004.17, 1000.0);
-        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery()).getFirst().getWithdrawals()).hasSize(1);
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20)).content().getFirst().getWithdrawals()).hasSize(1);
     }
 
     @Test
     void rollsBackPartialWritesAndStartsTransactionBeforeLoading() {
+        jdbc.execute("""
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                SELECT id, 'basic', 1000, 31 FROM generate_series(5, 105) AS id
+                """);
         var failingRepository = new TimeDepositRepository() {
             @Override
-            public List<TimeDeposit> findAll() {
-                return repository.findAll();
+            public Page<TimeDeposit> search(PageRequest request) {
+                return repository.search(request);
             }
 
             @Override
-            public List<TimeDeposit> findAllForBalanceUpdate() {
+            public void lockForBalanceUpdate() {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
-                return repository.findAllForBalanceUpdate();
+                repository.lockForBalanceUpdate();
             }
 
             @Override
             public void saveBalances(List<TimeDeposit> deposits) {
-                repository.saveBalances(List.of(deposits.getFirst()));
-                throw new IllegalStateException("Simulated failure after the first persisted balance");
+                if (deposits.getFirst().getId() > 100) {
+                    repository.saveBalances(List.of(deposits.getFirst()));
+                    throw new IllegalStateException("Simulated failure while persisting the second page");
+                }
+                repository.saveBalances(deposits);
             }
         };
         var handler = new UpdateTimeDepositBalancesCommandHandler(failingRepository, calculator);
@@ -104,8 +116,8 @@ class BalanceUpdateIT {
         assertThatThrownBy(() -> transactional.dispatch(new UpdateTimeDepositBalancesCommand()))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(repository.findAll()).extracting(TimeDeposit::getBalance)
-                .containsExactly(1000.0, 1000.0, 1000.0, 1000.0);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE balance <> 1000", Integer.class))
+                .isZero();
     }
 
     @Test
@@ -125,7 +137,21 @@ class BalanceUpdateIT {
             second.get(20, TimeUnit.SECONDS);
         }
 
-        assertThat(repository.findAll().get(1).getBalance()).isEqualTo(1005.01);
+        assertThat(repository.search(new PageRequest(0, 20)).content().get(1).getBalance()).isEqualTo(1005.01);
+    }
+
+    @Test
+    void persistsEveryDepositAcrossMultiplePagesExactlyOnce() {
+        jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
+        jdbc.execute("""
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                SELECT id, 'basic', 1000, 31 FROM generate_series(1, 205) AS id
+                """);
+
+        commands.dispatch(new UpdateTimeDepositBalancesCommand());
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE balance = 1000.83", Integer.class))
+                .isEqualTo(205);
     }
 
     @Test

@@ -13,6 +13,7 @@
 - Build configuration: root `pom.xml` is a multi-module parent/aggregator; see `IMPLEMENTATION_PLAN.md` for module boundaries and progress.
 - Shared production code and backend domain code: `domain/src/main/java/org/ikigaidigital/`, built by the `domain` module. The `legacy` module has been removed.
 - Shared and backend domain tests: `domain/src/test/java/org/ikigaidigital/`, built by the `domain` module.
+- Persistence uses Spring Data JDBC under `adapter/adapter-persistence`: annotated table records, inherited CRUD/paging repositories, and a dedicated domain mapper. `TimeDepositTable` must own withdrawals through `@MappedCollection(idColumn = "timeDepositId")`. The domain port exposes `search(PageRequest)` with framework-free page values. Use inherited `findAll(Pageable)` on the ID-only paging repository and inherited `CrudRepository.findAllById` with single-query loading on the aggregate repository; direct paged aggregate loading introduces extra child queries. Do not redeclare `findAll`. Preserve ID ordering and keep row locks/balance-only modifying queries in persistence; bootstrap enables repository scanning/loading and owns the transaction across every update page.
 - The starter calculator's separately requested Strategy refactor is documented in `CALCULATOR_REFACTOR_PLAN.md`. Preserve its compatible API and keep new backend code/tests in their corresponding modules.
 - Test dependencies are centrally managed by the Boot parent.
 - The shared suite has 60 characterization cases plus strategy/resolver/extension/value-object and withdrawal cases. Maintain meaningful behavioral assertions when adding plans.
@@ -47,7 +48,7 @@ The README explicitly states that the existing calculator is correct. Its implem
 
 - Implement exactly two business API endpoints:
   1. A RESTful operation that updates the balances of all time deposits in the database and persists the results.
-  2. A GET operation that retrieves all time deposits.
+  2. A GET operation that retrieves time deposits through zero-based pages (`page`, `size`; defaults 0 and 20), with a `content` array and page/size/totalElements/totalPages metadata. This user-requested pagination replaces the original top-level array; all deposits remain accessible by traversing pages.
 - Choose and document the update HTTP method and resource paths consistently in the implementation and OpenAPI contract; the README does not prescribe them.
 - Each deposit returned by GET must include `id`, `planType`, `balance`, `days`, and `withdrawals`.
 - Persist these required tables and fields:
@@ -56,6 +57,7 @@ The README explicitly states that the existing calculator is correct. Its implem
 - Map withdrawals to their owning deposit and include them in retrieval responses. The README does not specify withdrawal response fields; document any chosen representation.
 - Use decimal database types for monetary fields while preserving the shared model's API and calculator behavior through explicit mapping.
 - Keep the bulk read/update/persist operation transactionally consistent.
+- The balance-update command locks once and processes ID-ordered pages of 100 deposits within the same transaction, so a later-page failure rolls back earlier-page writes.
 - Do not add additional business endpoints such as create, delete, single-deposit lookup, or withdrawal management. Handling invalid input and exceptions is not required for this assignment.
 
 ## Design and implementation

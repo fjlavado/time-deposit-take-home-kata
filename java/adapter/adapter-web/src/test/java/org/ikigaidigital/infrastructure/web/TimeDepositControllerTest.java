@@ -7,6 +7,8 @@ import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
+import org.ikigaidigital.domain.model.Page;
+import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
 import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
@@ -41,29 +43,34 @@ class TimeDepositControllerTest {
 
     @BeforeEach
     void emptyQueryResult() {
-        when(queries.dispatch(new RetrieveTimeDepositsQuery())).thenReturn(List.of());
+        when(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20))).thenReturn(new Page<>(List.of(), 0, 20, 0));
     }
 
     @Test
     void retrievesExactResponseFieldsAndWithdrawalRepresentation() throws Exception {
         var deposit = new TimeDeposit(1, "basic", 1000.0, 31,
                 List.of(new Withdrawal(2, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
-        when(queries.dispatch(new RetrieveTimeDepositsQuery())).thenReturn(List.of(deposit));
+        when(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20)))
+                .thenReturn(new Page<>(List.of(deposit), 0, 20, 1));
         var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
 
         mvc.perform(get("/time-deposits"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].length()").value(5))
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].planType").value("basic"))
-                .andExpect(jsonPath("$[0].balance").value(1000))
-                .andExpect(jsonPath("$[0].days").value(31))
-                .andExpect(jsonPath("$[0].withdrawals[0].length()").value(3))
-                .andExpect(jsonPath("$[0].withdrawals[0].id").value(2))
-                .andExpect(jsonPath("$[0].withdrawals[0].amount").value(12.34))
-                .andExpect(jsonPath("$[0].withdrawals[0].date").value("2026-01-02"));
+                .andExpect(jsonPath("$.content[0].length()").value(5))
+                .andExpect(jsonPath("$.content[0].id").value(1))
+                .andExpect(jsonPath("$.content[0].planType").value("basic"))
+                .andExpect(jsonPath("$.content[0].balance").value(1000))
+                .andExpect(jsonPath("$.content[0].days").value(31))
+                .andExpect(jsonPath("$.content[0].withdrawals[0].length()").value(3))
+                .andExpect(jsonPath("$.content[0].withdrawals[0].id").value(2))
+                .andExpect(jsonPath("$.content[0].withdrawals[0].amount").value(12.34))
+                .andExpect(jsonPath("$.content[0].withdrawals[0].date").value("2026-01-02"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
 
-        verify(queries).dispatch(new RetrieveTimeDepositsQuery());
+        verify(queries).dispatch(new RetrieveTimeDepositsQuery(0, 20));
         verifyNoInteractions(commands);
     }
 
@@ -77,7 +84,25 @@ class TimeDepositControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(commands, times(2)).dispatch(new UpdateTimeDepositBalancesCommand());
-        mvc.perform(get("/time-deposits")).andExpect(content().json("[]"));
+        mvc.perform(get("/time-deposits")).andExpect(jsonPath("$.content").isEmpty());
+    }
+
+    @Test
+    void forwardsPaginationParametersAndReturnsMetadata() throws Exception {
+        when(queries.dispatch(new RetrieveTimeDepositsQuery(2, 5)))
+                .thenReturn(new Page<>(List.of(), 2, 5, 7));
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
+
+        mvc.perform(get("/time-deposits").param("page", "2").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.size").value(5))
+                .andExpect(jsonPath("$.totalElements").value(7))
+                .andExpect(jsonPath("$.totalPages").value(2));
+
+        verify(queries).dispatch(new RetrieveTimeDepositsQuery(2, 5));
+        verifyNoInteractions(commands);
     }
 
     @Test
@@ -99,7 +124,7 @@ class TimeDepositControllerTest {
 
         assertThat(documented).containsExactlyInAnyOrder("GET /time-deposits", "POST /time-deposits/balance-updates");
         assertThat(implemented).isEqualTo(documented);
-        var responseTypes = List.of(TimeDepositResponse.class, WithdrawalResponse.class);
+        var responseTypes = List.of(TimeDepositPageResponse.class, TimeDepositResponse.class, WithdrawalResponse.class);
         for (var responseType : responseTypes) {
             var schema = api.getComponents().getSchemas().get(responseType.getSimpleName().replace("Response", ""));
             assertThat(schema.getProperties().keySet()).containsExactlyInAnyOrderElementsOf(
@@ -108,6 +133,8 @@ class TimeDepositControllerTest {
                             .map(field -> field.getName()).toList());
         }
         assertThat(api.getPaths().get("/time-deposits").getGet().getResponses()).containsKey("200");
+        assertThat(api.getPaths().get("/time-deposits").getGet().getParameters())
+                .extracting(parameter -> parameter.getName()).containsExactly("page", "size");
         assertThat(api.getPaths().get("/time-deposits/balance-updates").getPost().getResponses()).containsKey("204");
     }
 

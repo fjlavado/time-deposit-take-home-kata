@@ -7,6 +7,11 @@ is complete, including compatible balance value-object encapsulation in the star
 The shared sources/tests are now consolidated in `domain/src/`; the separate `legacy`
 module and duplicate interest policies have been removed. Both calculator APIs use the
 shared strategies. Earlier verification logs below describe their historical layouts.
+The persistence adapter now uses Spring Data JDBC table records and repository proxies;
+the migration and verification checkpoint is recorded below.
+Subsequent CRUD/pagination work keeps Spring Data in persistence, replaces unbounded
+domain reads with `search(PageRequest)`, exposes paginated GET, and updates balances
+page by page within one transaction.
 
 ## Implementation commits
 
@@ -28,7 +33,7 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 - Java 25 bytecode (`--release 25`), compilable with the installed JDK 27.
 - Maven multi-module reactor with Spring Boot 4.1.1 dependency management.
-- PostgreSQL, Spring JDBC, and Flyway as the sole schema-evolution mechanism.
+- PostgreSQL, Spring Data JDBC, and Flyway as the sole schema-evolution mechanism.
 - The original backend work preserved `java/src/`; its subsequent calculator and
   balance-value refactor is tracked in [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md).
 - Exactly two business API operations, described in a checked-in OpenAPI contract.
@@ -41,7 +46,7 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 | `domain` | None | Single compatible deposit model/calculator, immutable withdrawal/balance values, interest strategies, outbound repository port |
 | `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | `domain` | JDBC repository adapter, dedicated result-set mapper, versioned SQL migrations |
+| `adapter/adapter-persistence` | `domain` | Spring Data JDBC table records/repositories, domain adapter/mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 
@@ -81,7 +86,7 @@ Domain and application production code must not depend on frameworks. Applicatio
 
 ### 6. Persistence — `feat(persistence): add Flyway-managed PostgreSQL adapter`
 
-- [x] Implement JDBC mapping and batched balance updates.
+- [x] Implement JDBC mapping and batched balance updates (subsequently replaced by Spring Data JDBC mapping and balance-only modifying queries; see migration below).
 - [x] Load withdrawals without per-deposit queries.
 - [x] Add `db/migration/V1__create_time_deposit_schema.sql` with required tables, keys, constraints, decimal/date columns, and foreign-key index.
 - [x] Run/validate Flyway migrations at startup; introduce changes through new immutable versioned migrations.
@@ -113,6 +118,45 @@ Domain and application production code must not depend on frameworks. Applicatio
   coverage in [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md).
 - The shared starter model now encapsulates an immutable balance value while
   preserving its public API; the backend retains its independent model.
+
+## Spring Data JDBC migration — 2026-10-23
+
+- [x] Replace the adapter's `spring-jdbc` dependency with `spring-data-jdbc` and use `spring-boot-starter-data-jdbc` in bootstrap.
+- [x] Add annotated `TimeDepositTable` and `WithdrawalTable` records, with decimal/date types and explicit camel-case mappings; map withdrawals as aggregate children with `@MappedCollection(idColumn = "timeDepositId")`.
+- [x] Introduce the Spring Data aggregate repository with a base `findAll()` read, ordered row locking, and balance-only `@Modifying` queries.
+- [x] Replace template-based reads/writes and result-set extraction with repository delegation and `TimeDepositPersistenceMapper`.
+- [x] Load deposits and mapped withdrawals in one query with single-query loading, replacing the initially implemented separate bulk reads; sort aggregate/withdrawal IDs in memory. Use one modifying statement per deposit rather than template batch updates.
+- [x] Explicitly scan JDBC repositories and enable single-query loading in bootstrap; retain transaction decoration around the entire command.
+- [x] Adapt PostgreSQL adapter tests to actual repository proxies; assert a single read query and strengthen ordering, withdrawal ownership, and unchanged withdrawal ID/amount/date assertions. Verify bootstrap enables single-query loading.
+- [x] Update architecture/dependency documentation, project guidance, and the AI workflow record.
+
+Verification: `mvn -B clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with
+release 25: 155 non-integration cases and 11 PostgreSQL integration cases, with
+no failures, errors, or skips. Coverage includes migration validation, empty reads,
+mapped-collection single-query loading, balance-only writes, HTTP behavior, rollback,
+and concurrent updates. The focused adapter check
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q -pl adapter/adapter-persistence -am verify`
+also passed after normalizing absent mapped withdrawals to an empty set.
+
+## Inherited CRUD and paginated search — 2026-10-23
+
+- [x] Preserve the user's `CrudRepository<TimeDepositTable, Integer>` inheritance without redeclaring `findAll`.
+- [x] Keep domain/application free of Spring Data, as selected by the user; introduce domain `PageRequest`/`Page` values and replace unbounded reads with `search(PageRequest)`.
+- [x] Use inherited `PagingAndSortingRepository.findAll(Pageable)` for an ID-only table view, then inherited `CrudRepository.findAllById` for mapped-collection aggregate loading.
+- [x] Keep query count bounded: at most three reads per populated page (IDs, optional count, mapped aggregates), with no per-deposit child queries. No schema changes are required.
+- [x] Expose `page`/`size` parameters with defaults 0/20 and a generated page response containing `content`, `page`, `size`, `totalElements`, and `totalPages`. Version the OpenAPI contract as 2.0.0 for the changed GET response shape.
+- [x] Add the validation provider required by generated pagination constraints.
+- [x] Lock once before iterating pages of 100 deposits in the update handler; retain a single transaction and balance-only persistence.
+- [x] Cover default/explicit pagination, empty/full/partial/out-of-range pages, withdrawal mapping, JDBC query counts, 201/205-deposit updates, and second-page rollback.
+
+Verification: focused PostgreSQL adapter verification passed after the direct paged
+aggregate query exposed child-query fallback and JDBC statement counting was expanded
+to include the plain count query. `mvn -B clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` then passed on JDK 27 with
+release 25: **158 non-integration cases and 14 PostgreSQL integration cases**, with
+no failures, errors, or skips. Architecture checks continue to enforce framework-free
+domain/application modules and exactly two HTTP business operations.
 
 ## Verification log
 

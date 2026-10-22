@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Time Deposit API
-  version: 1.0.0
+  version: 2.0.0
   description: >-
     Retrieves deposits and credits one month's interest per update invocation.
     Rates are annual percentages divided by twelve. Only interest is rounded to
@@ -12,16 +12,31 @@ paths:
   /time-deposits:
     get:
       operationId: retrieveTimeDeposits
-      summary: Retrieve all time deposits, including their withdrawals
+      summary: Retrieve a page of time deposits, including their withdrawals
+      parameters:
+        - name: page
+          in: query
+          description: Zero-based page number; deposits are ordered by ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Number of deposits per page
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 20
       responses:
         '200':
-          description: Deposits ordered by ID, or an empty list
+          description: A page of deposits ordered by ID, with pagination metadata
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TimeDeposit'
+                $ref: '#/components/schemas/TimeDepositPage'
   /time-deposits/balance-updates:
     post:
       operationId: updateTimeDepositBalances
@@ -36,6 +51,31 @@ paths:
           description: All balances updated successfully; no response body
 components:
   schemas:
+    TimeDepositPage:
+      type: object
+      additionalProperties: false
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeDeposit'
+        page:
+          type: integer
+          format: int32
+          example: 0
+        size:
+          type: integer
+          format: int32
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 42
+        totalPages:
+          type: integer
+          format: int64
+          example: 3
     TimeDeposit:
       type: object
       additionalProperties: false

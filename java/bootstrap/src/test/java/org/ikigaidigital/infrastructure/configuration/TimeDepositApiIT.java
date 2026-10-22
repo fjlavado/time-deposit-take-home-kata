@@ -57,7 +57,12 @@ class TimeDepositApiIT {
         var response = request("GET", "/time-deposits");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        var deposits = json.readTree(response.body());
+        var page = json.readTree(response.body());
+        assertThat(page.get("page").asInt()).isZero();
+        assertThat(page.get("size").asInt()).isEqualTo(20);
+        assertThat(page.get("totalElements").asLong()).isEqualTo(3);
+        assertThat(page.get("totalPages").asLong()).isEqualTo(1);
+        var deposits = page.get("content");
         assertThat(deposits.size()).isEqualTo(3);
         var first = deposits.get(0);
         assertThat(first.size()).isEqualTo(5);
@@ -78,7 +83,7 @@ class TimeDepositApiIT {
 
         assertThat(response.statusCode()).isEqualTo(204);
         assertThat(response.body()).isEmpty();
-        var deposits = json.readTree(request("GET", "/time-deposits").body());
+        var deposits = json.readTree(request("GET", "/time-deposits").body()).get("content");
         assertThat(deposits.get(0).get("balance").asDouble()).isEqualTo(1000.83);
         assertThat(deposits.get(1).get("balance").asDouble()).isEqualTo(1000);
         assertThat(deposits.get(2).get("balance").asDouble()).isEqualTo(1000);
@@ -88,7 +93,7 @@ class TimeDepositApiIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM withdrawals", Integer.class)).isEqualTo(2);
 
         assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
-        assertThat(json.readTree(request("GET", "/time-deposits").body()).get(0).get("balance").asDouble())
+        assertThat(json.readTree(request("GET", "/time-deposits").body()).get("content").get(0).get("balance").asDouble())
                 // The final binary-double balance is intentionally not rounded to cents.
                 .isEqualTo(1001.6600000000001);
     }
@@ -97,9 +102,36 @@ class TimeDepositApiIT {
     void bothEndpointsSupportAnEmptyDatabase() throws Exception {
         jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\"");
 
-        assertThat(request("GET", "/time-deposits").body()).isEqualTo("[]");
+        var empty = json.readTree(request("GET", "/time-deposits").body());
+        assertThat(empty.get("content").isEmpty()).isTrue();
+        assertThat(empty.get("totalElements").asLong()).isZero();
+        assertThat(empty.get("totalPages").asLong()).isZero();
         assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
-        assertThat(request("GET", "/time-deposits").body()).isEqualTo("[]");
+        assertThat(json.readTree(request("GET", "/time-deposits").body()).get("content").isEmpty()).isTrue();
+    }
+
+    @Test
+    void paginatesResultsAndPreservesTotalsBeyondTheLastPage() throws Exception {
+        var firstResponse = request("GET", "/time-deposits?page=0&size=2");
+        assertThat(firstResponse.statusCode()).isEqualTo(200);
+        var first = json.readTree(firstResponse.body());
+        assertThat(first.get("content").size()).isEqualTo(2);
+        assertThat(first.get("content").get(0).get("id").asInt()).isEqualTo(1);
+        assertThat(first.get("content").get(1).get("id").asInt()).isEqualTo(2);
+        assertThat(first.get("content").get(0).get("withdrawals").size()).isEqualTo(2);
+        assertThat(first.get("totalElements").asLong()).isEqualTo(3);
+        assertThat(first.get("totalPages").asLong()).isEqualTo(2);
+
+        var last = json.readTree(request("GET", "/time-deposits?page=1&size=2").body());
+        assertThat(last.get("content").size()).isEqualTo(1);
+        assertThat(last.get("content").get(0).get("id").asInt()).isEqualTo(3);
+        assertThat(last.get("page").asInt()).isEqualTo(1);
+        assertThat(last.get("size").asInt()).isEqualTo(2);
+
+        var beyond = json.readTree(request("GET", "/time-deposits?page=2&size=2").body());
+        assertThat(beyond.get("content").isEmpty()).isTrue();
+        assertThat(beyond.get("totalElements").asLong()).isEqualTo(3);
+        assertThat(beyond.get("totalPages").asLong()).isEqualTo(2);
     }
 
     private HttpResponse<String> request(String method, String path) throws Exception {

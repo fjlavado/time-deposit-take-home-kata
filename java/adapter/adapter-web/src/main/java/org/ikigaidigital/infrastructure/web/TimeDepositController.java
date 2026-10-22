@@ -5,11 +5,9 @@ import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.infrastructure.web.generated.api.TimeDepositsApi;
-import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
+import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
 import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 public final class TimeDepositController implements TimeDepositsApi {
@@ -24,8 +22,10 @@ public final class TimeDepositController implements TimeDepositsApi {
     }
 
     @Override
-    public List<TimeDepositResponse> retrieveTimeDeposits() {
-        return queryBus.dispatch(new RetrieveTimeDepositsQuery()).stream().map(mapper::toResponse).toList();
+    public TimeDepositPageResponse retrieveTimeDeposits(Integer page, Integer size) {
+        var result = queryBus.dispatch(new RetrieveTimeDepositsQuery(page, size));
+        return new TimeDepositPageResponse(result.content().stream().map(mapper::toResponse).toList(),
+                result.page(), result.size(), result.totalElements(), result.totalPages());
     }
 
     @Override

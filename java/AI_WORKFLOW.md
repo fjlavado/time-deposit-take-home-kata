@@ -179,3 +179,81 @@ passed on JDK 27 with release 25: 155 non-integration cases (137 in domain) and
 11 real PostgreSQL integration cases, without failures, errors, or skips. The
 integration suite covers API responses, persistence mappings, transaction rollback,
 and concurrent balance updates.
+
+## Spring Data JDBC migration
+
+The user requested Spring Data JDBC in `java/adapter/adapter-persistence/`, using
+the local Doodle `infrastructure/jdbc` package as a reference, then approved the
+migration plan and requested implementation and documentation. OpenCode with
+`openai/gpt-6.1-sol` inspected Doodle's annotated tables, repository interfaces,
+and mappers through filesystem tools. The reference informed the structure;
+this repository's Maven build remains self-contained.
+
+Reproduce the task with:
+
+> Replace persistence templates with Spring Data JDBC table records, repository
+> interfaces, and a dedicated domain mapper. Keep ordered bulk reads and row
+> locks, explicit decimal/date conversion, balance-only writes, and the existing
+> command transaction boundary. Enable repository scanning in bootstrap, adapt
+> real PostgreSQL integration coverage, and document the changes and verification.
+
+The agent assisted with dependency changes, annotated records, repository query
+methods, mapper/adapter rewiring, bootstrap scanning, and integration-test setup
+using `AbstractJdbcConfiguration` and real repository proxies. Existing mapping
+tests were strengthened with out-of-order fixtures, withdrawals belonging to
+different deposits, and preservation of withdrawal IDs/amounts/dates after writes.
+Spring Data modifying queries issue one balance update per deposit, replacing
+the previous template batch operation; all writes share the outer transaction.
+The Java README, implementation tracker, and project guidance document this design.
+
+`mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify`
+passed on JDK 27 with release 25: 155 non-integration cases and 11 PostgreSQL
+integration cases, without failures, errors, or skips. Verification covers actual
+Spring Data mappings/queries, HTTP behavior, transaction rollback, and serialized
+concurrent updates. No additional skills or subagents were used.
+
+The user then required `@MappedCollection` on `TimeDepositTable`. OpenCode removed
+the independent withdrawal repository/read and mapped the child set using the
+existing `timeDepositId` foreign key. Hound fetched the official Spring Data
+aggregate-loading documentation, and `javap` checked the installed Spring Data
+4.1.1/Boot APIs. Since mapped collections alone issue additional child queries,
+bootstrap now enables single-query loading on `JdbcMappingContext`; the repository
+uses the supported base `findAll()` method and mapping sorts IDs in memory.
+
+PostgreSQL integration tests count actual repository read invocations through a
+delegating JDBC-operations proxy and assert one aggregate query for empty and
+populated databases. The initial focused run exposed null child sets for deposits
+without withdrawals; the aggregate record now normalizes them to an empty set.
+The focused adapter verification then passed, followed by `mvn -B clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify`: all 155 non-integration
+cases and 11 PostgreSQL integration cases passed without failures, errors, or
+skips. Bootstrap coverage also verifies that single-query loading is enabled.
+
+## Inherited CRUD and paginated search
+
+The user requested inherited CRUD members and paginated search. After clarification,
+they selected **CRUD only in persistence** and **paginated GET**. OpenCode with
+`openai/gpt-6.1-sol` preserved the user's change to `CrudRepository` and removed
+unused imports, while keeping the domain port independent of Spring Data. The port
+now uses framework-free `PageRequest` and `Page<TimeDeposit>` values. The query,
+generated OpenAPI interface/DTOs, controller, and tests carry page parameters and
+metadata end to end. OpenAPI 2.0.0 documents the new GET page envelope.
+
+The agent checked installed Spring Data 4.1.1 repository bytecode using `javap` and
+revisited the official aggregate-loading documentation using Hound. A focused
+PostgreSQL query-count test demonstrated that inherited `findAll(Pageable)` on the
+aggregate falls back to extra child reads. The implemented solution uses inherited
+paging over an ID-only record of the same table, followed by inherited
+`findAllById` with single-query loading for the page's mapped withdrawals. No custom
+`findAll` declaration, templates, or schema changes are needed. Test instrumentation
+now observes both prepared reads and plain JDBC count statements.
+
+The update handler locks once, then calculates/saves pages of 100 deposits inside
+the command transaction. Tests cover processing all 201/205 deposits exactly once
+and rollback when the second page fails. The web adapter's validation starter was
+added after generated minimum constraints exposed the missing validation provider.
+Build verification then passed `mvn -B clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` on JDK 27 with release 25:
+158 non-integration cases and 14 PostgreSQL integration cases, without failures,
+errors, or skips. The README, implementation tracker, and agent rules document
+pagination, inherited repository usage, query bounds, and transaction behavior.

@@ -1,8 +1,7 @@
 package org.ikigaidigital.application.query;
 
 import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.model.Page;
 
-import java.util.List;
-
-public record RetrieveTimeDepositsQuery() implements Query<List<TimeDeposit>> {
+public record RetrieveTimeDepositsQuery(int page, int size) implements Query<Page<TimeDeposit>> {
 }
