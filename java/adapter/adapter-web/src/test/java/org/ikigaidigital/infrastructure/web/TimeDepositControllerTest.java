@@ -1,11 +1,17 @@
 package org.ikigaidigital.infrastructure.web;
 
 import io.swagger.v3.parser.OpenAPIV3Parser;
+import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
+import org.ikigaidigital.application.port.in.CommandBus;
+import org.ikigaidigital.application.port.in.QueryBus;
+import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
+import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -16,10 +22,14 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -27,11 +37,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class TimeDepositControllerTest {
+    private final CommandBus commands = mock(CommandBus.class);
+    private final QueryBus queries = mock(QueryBus.class);
+
+    @BeforeEach
+    void emptyQueryResult() {
+        when(queries.dispatch(new RetrieveTimeDepositsQuery())).thenReturn(List.of());
+    }
+
     @Test
     void retrievesExactResponseFieldsAndWithdrawalRepresentation() throws Exception {
         var deposit = new TimeDeposit(1, PlanType.BASIC, 1000, 31,
                 List.of(new Withdrawal(2, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
-        var mvc = MockMvcBuilders.standaloneSetup(new TimeDepositController(() -> List.of(deposit), () -> {})).build();
+        when(queries.dispatch(new RetrieveTimeDepositsQuery())).thenReturn(List.of(deposit));
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
 
         mvc.perform(get("/time-deposits"))
                 .andExpect(status().isOk())
@@ -44,19 +63,21 @@ class TimeDepositControllerTest {
                 .andExpect(jsonPath("$[0].withdrawals[0].id").value(2))
                 .andExpect(jsonPath("$[0].withdrawals[0].amount").value(12.34))
                 .andExpect(jsonPath("$[0].withdrawals[0].date").value("2026-01-02"));
+
+        verify(queries).dispatch(new RetrieveTimeDepositsQuery());
+        verifyNoInteractions(commands);
     }
 
     @Test
     void delegatesEachUpdateAndReturnsNoBody() throws Exception {
-        var invocations = new AtomicInteger();
-        var mvc = MockMvcBuilders.standaloneSetup(new TimeDepositController(List::of, invocations::incrementAndGet)).build();
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
 
         mvc.perform(post("/time-deposits/balance-updates"))
                 .andExpect(status().isNoContent()).andExpect(content().string(""));
         mvc.perform(post("/time-deposits/balance-updates"))
                 .andExpect(status().isNoContent());
 
-        assertThat(invocations.get()).isEqualTo(2);
+        verify(commands, times(2)).dispatch(new UpdateTimeDepositBalancesCommand());
         mvc.perform(get("/time-deposits")).andExpect(content().json("[]"));
     }
 
@@ -70,7 +91,7 @@ class TimeDepositControllerTest {
                 path.getValue().readOperationsMap().keySet().stream().map(method -> method + " " + path.getKey()))
                 .collect(Collectors.toSet());
 
-        var mvc = MockMvcBuilders.standaloneSetup(new TimeDepositController(List::of, () -> {})).build();
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
         var context = Objects.requireNonNull(mvc.getDispatcherServlet().getWebApplicationContext());
         var mappings = context.getBean(RequestMappingHandlerMapping.class).getHandlerMethods();
         var implemented = mappings.keySet().stream().flatMap(mapping -> mapping.getMethodsCondition().getMethods().stream()
@@ -89,5 +110,9 @@ class TimeDepositControllerTest {
         }
         assertThat(api.getPaths().get("/time-deposits").getGet().getResponses()).containsKey("200");
         assertThat(api.getPaths().get("/time-deposits/balance-updates").getPost().getResponses()).containsKey("204");
+    }
+
+    private TimeDepositController controller() {
+        return new TimeDepositController(commands, queries, new TimeDepositApiMapper());
     }
 }

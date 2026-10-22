@@ -1,15 +1,11 @@
 package org.ikigaidigital.infrastructure.persistence;
 
-import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
-import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositResultSetMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ResultSetExtractor;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 public final class JdbcTimeDepositRepository implements TimeDepositRepository {
@@ -22,31 +18,16 @@ public final class JdbcTimeDepositRepository implements TimeDepositRepository {
             """;
 
     private final JdbcTemplate jdbc;
+    private final TimeDepositResultSetMapper mapper;
 
-    public JdbcTimeDepositRepository(JdbcTemplate jdbc) {
+    public JdbcTimeDepositRepository(JdbcTemplate jdbc, TimeDepositResultSetMapper mapper) {
         this.jdbc = jdbc;
+        this.mapper = mapper;
     }
 
     @Override
     public List<TimeDeposit> findAll() {
-        return jdbc.query(SELECT_ALL, (ResultSetExtractor<List<TimeDeposit>>) rows -> {
-            var deposits = new LinkedHashMap<Integer, DepositRow>();
-            while (rows.next()) {
-                int id = rows.getInt("id");
-                var deposit = deposits.get(id);
-                if (deposit == null) {
-                    deposit = new DepositRow(id, new PlanType(rows.getString("planType")),
-                            rows.getBigDecimal("balance").doubleValue(), rows.getInt("days"), new ArrayList<>());
-                    deposits.put(id, deposit);
-                }
-                Integer withdrawalId = rows.getObject("withdrawal_id", Integer.class);
-                if (withdrawalId != null) {
-                    deposit.withdrawals().add(new Withdrawal(withdrawalId, rows.getBigDecimal("amount"),
-                            rows.getDate("date").toLocalDate()));
-                }
-            }
-            return deposits.values().stream().map(DepositRow::toDomain).toList();
-        });
+        return jdbc.query(SELECT_ALL, mapper);
     }
 
     @Override
@@ -68,11 +49,5 @@ public final class JdbcTimeDepositRepository implements TimeDepositRepository {
                     statement.setBigDecimal(1, BigDecimal.valueOf(deposit.balance()));
                     statement.setInt(2, deposit.id());
                 });
-    }
-
-    private record DepositRow(int id, PlanType planType, double balance, int days, List<Withdrawal> withdrawals) {
-        TimeDeposit toDomain() {
-            return new TimeDeposit(id, planType, balance, days, withdrawals);
-        }
     }
 }

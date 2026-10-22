@@ -3,6 +3,7 @@ package org.ikigaidigital.infrastructure.persistence;
 import org.flywaydb.core.Flyway;
 import org.ikigaidigital.domain.model.PlanType;
 import org.ikigaidigital.domain.model.TimeDeposit;
+import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositResultSetMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,7 @@ class JdbcTimeDepositRepositoryIT {
     @BeforeEach
     void resetData() {
         jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
-        repository = new JdbcTimeDepositRepository(jdbc);
+        repository = new JdbcTimeDepositRepository(jdbc, new TimeDepositResultSetMapper());
     }
 
     @Test

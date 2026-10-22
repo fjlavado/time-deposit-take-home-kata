@@ -35,32 +35,32 @@ Acceptance: requests reach exactly their registered handler through typed bus AP
 Acceptance: balances, metadata, withdrawals, and interest rules retain existing behavior.
 
 ### 4. Separate adapter mapping responsibilities
-- [ ] Extract TimeDepositApiMapper and joined JDBC result mapping.
-- [ ] Retain SQL, locking, batch updates, and explicit decimal conversions in persistence.
+- [x] Extract TimeDepositApiMapper and joined JDBC result mapping.
+- [x] Retain SQL, locking, batch updates, and explicit decimal conversions in persistence.
 Acceptance: controllers delegate/map; repository adapters execute SQL; mappers translate.
 
 ### 5. Wire transactional command dispatch
-- [ ] Add bootstrap TransactionalCommandBus around complete delegated dispatch.
-- [ ] Wire handlers/buses explicitly; queries use the plain query dispatcher.
-- [ ] Verify transaction-before-load, rollback, concurrent credits, and query transaction behavior.
+- [x] Add bootstrap TransactionalCommandBus around complete delegated dispatch.
+- [x] Wire handlers/buses explicitly; queries use the plain query dispatcher.
+- [x] Verify transaction-before-load, rollback, concurrent credits, and query transaction behavior.
 Acceptance: framework transactions stay outside the core and cover entire commands.
 
 ### 6. Switch REST and remove superseded code
-- [ ] Inject buses and API mapper; dispatch one request record per endpoint.
-- [ ] Remove superseded use-case interfaces, services, and balance-update decorator.
-- [ ] Migrate tests and references; retain the generated API and response statuses.
+- [x] Inject buses and API mapper; dispatch one request record per endpoint.
+- [x] Remove superseded use-case interfaces, services, and balance-update decorator.
+- [x] Migrate tests and references; retain the generated API and response statuses.
 Acceptance: one command/query execution path per operation, preserving the HTTP contract.
 
 ### 7. Enforce architecture and document
-- [ ] Enforce core purity, inward dependencies, adapter isolation, and controller bus-port use.
+- [x] Enforce core purity, inward dependencies, adapter isolation, and controller bus-port use.
 - [ ] Update README, IMPLEMENTATION_PLAN, and AI_WORKFLOW.
 Acceptance: architecture checks and documentation reflect the implemented execution path.
 
 ### 8. Verify delivery
-- [ ] Run `mvn test` from `java/`.
-- [ ] Run `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` from `java/`.
+- [x] Run `mvn test` from `java/`.
+- [x] Run `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` from `java/`.
 - [ ] Run `git diff --check` and `git diff --exit-code -- java/src` from repository root.
-- [ ] Confirm exactly two contract operations and retain every Maven module.
+- [x] Confirm exactly two contract operations and retain every Maven module.
 - [ ] Record actual results and blockers below.
 
 ## Delivery checkpoints
@@ -78,4 +78,10 @@ The user requested meaningful commits during implementation. Checkpoints:
 
 - Steps 1–3: `mvn -B -pl application -am verify` passed on JDK 27 with release 25:
   25 domain cases and 8 application/dispatch cases, no failures, errors, or skips.
-- Remaining steps are in progress.
+- Step 1 checkpoint: `e58b715` — `refactor(application): introduce typed command and query dispatch`.
+- Steps 4–6 and architecture enforcement: `mvn -B clean test` and
+  `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25.
+  All 44 unit/controller/contract/architecture/legacy cases and 11 PostgreSQL integration
+  cases passed without failures, errors, or skips. This includes rollback, transaction-before-load,
+  concurrent updates, query dispatch without a transaction, and real-HTTP compatibility.
+- Documentation and final diff review are in progress.

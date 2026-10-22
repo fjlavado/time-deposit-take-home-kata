@@ -1,8 +1,13 @@
 package org.ikigaidigital.infrastructure.configuration;
 
-import org.ikigaidigital.application.port.in.RetrieveTimeDepositsUseCase;
-import org.ikigaidigital.application.port.in.UpdateTimeDepositBalancesUseCase;
-import org.ikigaidigital.application.service.UpdateTimeDepositBalancesService;
+import org.ikigaidigital.application.bus.DefaultCommandBus;
+import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
+import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;
+import org.ikigaidigital.application.port.in.CommandBus;
+import org.ikigaidigital.application.port.in.QueryBus;
+import org.ikigaidigital.application.query.Query;
+import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
+import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.domain.interest.MonthlyInterestCalculator;
 import org.ikigaidigital.domain.model.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
@@ -10,6 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -30,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
+@Import(BalanceUpdateIT.QueryProbeConfiguration.class)
 class BalanceUpdateIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.6-alpine");
@@ -43,8 +52,8 @@ class BalanceUpdateIT {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired TimeDepositRepository repository;
-    @Autowired RetrieveTimeDepositsUseCase retrieve;
-    @Autowired UpdateTimeDepositBalancesUseCase update;
+    @Autowired QueryBus queries;
+    @Autowired CommandBus commands;
     @Autowired MonthlyInterestCalculator calculator;
     @Autowired PlatformTransactionManager transactions;
 
@@ -60,12 +69,12 @@ class BalanceUpdateIT {
     }
 
     @Test
-    void bootMigratesDatabaseAndWiresTransactionalUseCases() {
-        update.updateBalances();
+    void bootMigratesDatabaseAndWiresTransactionalCommandDispatch() {
+        commands.dispatch(new UpdateTimeDepositBalancesCommand());
 
-        assertThat(retrieve.retrieveAll()).extracting(TimeDeposit::balance)
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery())).extracting(TimeDeposit::balance)
                 .containsExactly(1000.83, 1002.5, 1004.17, 1000.0);
-        assertThat(retrieve.retrieveAll().getFirst().withdrawals()).hasSize(1);
+        assertThat(queries.dispatch(new RetrieveTimeDepositsQuery()).getFirst().withdrawals()).hasSize(1);
     }
 
     @Test
@@ -88,10 +97,12 @@ class BalanceUpdateIT {
                 throw new IllegalStateException("Simulated failure after the first persisted balance");
             }
         };
-        var service = new UpdateTimeDepositBalancesService(failingRepository, calculator);
-        var transactional = new TransactionalBalanceUpdate(service, new TransactionTemplate(transactions));
+        var handler = new UpdateTimeDepositBalancesCommandHandler(failingRepository, calculator);
+        var transactional = new TransactionalCommandBus(new DefaultCommandBus(List.of(handler)),
+                new TransactionTemplate(transactions));
 
-        assertThatThrownBy(transactional::updateBalances).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> transactional.dispatch(new UpdateTimeDepositBalancesCommand()))
+                .isInstanceOf(IllegalStateException.class);
 
         assertThat(repository.findAll()).extracting(TimeDeposit::balance)
                 .containsExactly(1000.0, 1000.0, 1000.0, 1000.0);
@@ -101,13 +112,44 @@ class BalanceUpdateIT {
     void serializesConcurrentUpdatesWithoutLosingAnInterestCredit() throws Exception {
         var start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> { start.await(); update.updateBalances(); return null; });
-            var second = executor.submit(() -> { start.await(); update.updateBalances(); return null; });
+            var first = executor.submit(() -> {
+                start.await();
+                return commands.dispatch(new UpdateTimeDepositBalancesCommand());
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return commands.dispatch(new UpdateTimeDepositBalancesCommand());
+            });
             start.countDown();
             first.get(20, TimeUnit.SECONDS);
             second.get(20, TimeUnit.SECONDS);
         }
 
         assertThat(repository.findAll().get(1).balance()).isEqualTo(1005.01);
+    }
+
+    @Test
+    void queryDispatchDoesNotStartATransaction() {
+        assertThat(queries.dispatch(new TransactionActiveQuery())).isFalse();
+    }
+
+    private record TransactionActiveQuery() implements Query<Boolean> {}
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class QueryProbeConfiguration {
+        @Bean
+        QueryHandler<TransactionActiveQuery, Boolean> transactionActiveQueryHandler() {
+            return new QueryHandler<>() {
+                @Override
+                public Class<TransactionActiveQuery> queryType() {
+                    return TransactionActiveQuery.class;
+                }
+
+                @Override
+                public Boolean handle(TransactionActiveQuery query) {
+                    return TransactionSynchronizationManager.isActualTransactionActive();
+                }
+            };
+        }
     }
 }

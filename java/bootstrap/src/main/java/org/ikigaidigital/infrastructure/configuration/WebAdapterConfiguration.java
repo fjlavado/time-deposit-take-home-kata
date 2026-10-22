@@ -1,6 +1,8 @@
 package org.ikigaidigital.infrastructure.configuration;
 
 import org.ikigaidigital.infrastructure.web.TimeDepositController;
+import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -9,6 +11,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration(proxyBeanMethods = false)
 @Import(TimeDepositController.class)
 public class WebAdapterConfiguration implements WebMvcConfigurer {
+    @Bean
+    TimeDepositApiMapper timeDepositApiMapper() {
+        return new TimeDepositApiMapper();
+    }
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         // The documented external Swagger UI runs on localhost:8081, outside this application's routes.

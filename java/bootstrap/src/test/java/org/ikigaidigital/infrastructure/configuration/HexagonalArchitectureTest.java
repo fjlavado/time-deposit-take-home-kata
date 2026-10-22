@@ -3,6 +3,9 @@ package org.ikigaidigital.infrastructure.configuration;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import org.ikigaidigital.application.port.in.CommandBus;
+import org.ikigaidigital.application.port.in.QueryBus;
+import org.ikigaidigital.infrastructure.web.TimeDepositController;
 import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -47,9 +50,37 @@ class HexagonalArchitectureTest {
     }
 
     @Test
-    void webUsesApplicationPortsRatherThanInteractors() {
+    void webUsesBusPortsAndRequestsRatherThanConcreteDispatchersOrHandlers() {
         noClasses().that().resideInAPackage("org.ikigaidigital.infrastructure.web..")
-                .should().dependOnClassesThat().resideInAPackage("org.ikigaidigital.application.service..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "org.ikigaidigital.application.bus..",
+                        "org.ikigaidigital.application.command.handler..",
+                        "org.ikigaidigital.application.query.handler..")
+                .check(BACKEND);
+        classes().that().haveFullyQualifiedName(TimeDepositController.class.getName())
+                .should().dependOnClassesThat().haveFullyQualifiedName(CommandBus.class.getName())
+                .andShould().dependOnClassesThat().haveFullyQualifiedName(QueryBus.class.getName())
+                .check(BACKEND);
+        noClasses().that().resideInAPackage("org.ikigaidigital.infrastructure.web..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "org.ikigaidigital.domain.port..", "org.ikigaidigital.domain.interest..")
+                .check(BACKEND);
+    }
+
+    @Test
+    void commandAndQueryHandlersRemainSeparate() {
+        noClasses().that().resideInAPackage("org.ikigaidigital.application.command.handler..")
+                .should().dependOnClassesThat().resideInAPackage("org.ikigaidigital.application.query..")
+                .check(BACKEND);
+        noClasses().that().resideInAPackage("org.ikigaidigital.application.query.handler..")
+                .should().dependOnClassesThat().resideInAPackage("org.ikigaidigital.application.command..")
+                .check(BACKEND);
+    }
+
+    @Test
+    void transactionManagementIsConfinedToBootstrap() {
+        noClasses().that().resideOutsideOfPackage("org.ikigaidigital.infrastructure.configuration..")
+                .should().dependOnClassesThat().resideInAPackage("org.springframework.transaction..")
                 .check(BACKEND);
     }
 
