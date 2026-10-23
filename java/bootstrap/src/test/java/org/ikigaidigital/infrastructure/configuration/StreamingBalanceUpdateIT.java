@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -39,8 +40,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -49,6 +51,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.datasource.hikari.maximum-pool-size=2", "spring.datasource.hikari.connection-timeout=3000"
@@ -80,7 +83,7 @@ class StreamingBalanceUpdateIT {
         assertThat(JDBC_PROBE.openResults).hasValue(0);
         assertThat(JDBC_PROBE.openStatements).hasValue(0);
         observed.reset();
-        jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
+        jdbc.execute("TRUNCATE balance_update_executions, withdrawals, \"timeDeposits\" RESTART IDENTITY");
         JDBC_PROBE.reset();
     }
 
@@ -348,31 +351,86 @@ class StreamingBalanceUpdateIT {
     }
 
     @Test
-    void concurrentHttpTriggersReturnOneSuccessAndOneConflictThenRetryCalculatesAgain() throws Exception {
+    void concurrentHttpTriggersReturnOneAcceptedAndOneRunningThenAnotherRunCalculatesAgain() throws Exception {
         insertBasic(205);
         insertWithdrawals();
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
-        observed.beforeFirstSave = new CyclicBarrier(2);
+        var loaded = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        observed.onFirstLoad = () -> {
+            loaded.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Timed out waiting to release the worker");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+        };
+        UUID id;
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(this::postUpdate);
             var second = executor.submit(this::postUpdate);
-            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(204, 409);
+            var responses = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+            assertThat(responses).extracting(HttpResponse::statusCode).containsExactlyInAnyOrder(202, 409);
+            id = executionId(responses.getFirst());
+            assertThat(executionId(responses.getLast())).isEqualTo(id);
+            var json = JsonMapper.builder().build();
+            for (var response : responses) {
+                assertThat(json.readTree(response.body()).get("status").asString())
+                        .isEqualTo(response.statusCode() == 202 ? "STARTED" : "RUNNING");
+            }
+            assertThat(loaded.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM balance_update_executions", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT status FROM balance_update_executions WHERE id = ?", String.class, id))
+                    .isEqualTo("RUNNING");
+            assertUnchanged();
         } finally {
-            observed.beforeFirstSave = null;
+            release.countDown();
+            observed.onFirstLoad = null;
         }
+        awaitExecution(id, "COMPLETED");
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE version = 1 AND balance = 1000.83", Integer.class))
                 .isEqualTo(205);
-        assertThat(JDBC_PROBE.closedResults).hasValue(2);
-        assertThat(observed.closedDuringTransaction).hasValue(2);
+        assertThat(JDBC_PROBE.closedResults).hasValue(1);
+        assertThat(observed.closedDuringTransaction).hasValue(1);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
-        assertReleased();
-        assertThat(postUpdate()).isEqualTo(204);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(this::assertReleased);
+        var next = postUpdate();
+        assertThat(next.statusCode()).isEqualTo(202);
+        assertThat(executionId(next)).isNotEqualTo(id);
+        awaitExecution(executionId(next), "COMPLETED");
         assertThat(balances()).allSatisfy(balance -> assertThat(balance).isCloseTo(1001.66, within(1e-9)));
         assertThat(jdbc.queryForList("SELECT version FROM \"timeDeposits\"", Long.class)).containsOnly(2L);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
-        assertReleased();
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(this::assertReleased);
+    }
+
+    @Test
+    void asynchronousFailureRollsBackAllGroupsRecordsFailedAndAllowsANewHttpRun() throws Exception {
+        insertBasic(205);
+        insertWithdrawals();
+        var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
+        observed.failOnWrite = true;
+
+        var failed = postUpdate();
+        assertThat(failed.statusCode()).isEqualTo(202);
+        awaitExecution(executionId(failed), "FAILED");
+        assertUnchanged();
+        assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(this::assertReleased);
+
+        observed.failOnWrite = false;
+        var retry = postUpdate();
+        assertThat(retry.statusCode()).isEqualTo(202);
+        assertThat(executionId(retry)).isNotEqualTo(executionId(failed));
+        awaitExecution(executionId(retry), "COMPLETED");
+        assertThat(balances()).containsOnly(1000.83);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM balance_update_executions", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(this::assertReleased);
     }
 
     @ParameterizedTest
@@ -461,14 +519,22 @@ class StreamingBalanceUpdateIT {
         }
     }
 
-    private int postUpdate() throws Exception {
+    private HttpResponse<String> postUpdate() throws Exception {
         var uri = URI.create("http://localhost:" + environment.getRequiredProperty("local.server.port") + "/time-deposits/balance-updates");
         var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15)).POST(HttpRequest.BodyPublishers.noBody()).build();
         try (var client = HttpClient.newHttpClient()) {
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            assertThat(response.body()).isEmpty();
-            return response.statusCode();
+            return client.send(request, HttpResponse.BodyHandlers.ofString());
         }
+    }
+
+    private UUID executionId(HttpResponse<String> response) {
+        return UUID.fromString(JsonMapper.builder().build().readTree(response.body()).get("jobId").asString());
+    }
+
+    private void awaitExecution(UUID id, String expectedStatus) {
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(jdbc.queryForObject("SELECT status FROM balance_update_executions WHERE id = ?", String.class, id))
+                        .isEqualTo(expectedStatus));
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -499,7 +565,6 @@ class StreamingBalanceUpdateIT {
         volatile boolean failOnRead;
         volatile boolean failOnLoad;
         volatile Runnable onFirstLoad;
-        volatile CyclicBarrier beforeFirstSave;
 
         ObservedRepository(TimeDepositRepositoryPort delegate) { this.delegate = delegate; }
 
@@ -511,7 +576,6 @@ class StreamingBalanceUpdateIT {
             failOnRead = false;
             failOnLoad = false;
             onFirstLoad = null;
-            beforeFirstSave = null;
         }
 
         @Override
@@ -546,14 +610,6 @@ class StreamingBalanceUpdateIT {
         @Override
         public void saveAll(List<TimeDeposit> deposits) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
-            var barrier = beforeFirstSave;
-            if (barrier != null && deposits.getFirst().getId() == 1) {
-                try {
-                    barrier.await(10, TimeUnit.SECONDS);
-                } catch (Exception exception) {
-                    throw new IllegalStateException("Concurrent requests did not reach the write barrier", exception);
-                }
-            }
             delegate.saveAll(deposits);
             savedGroupSizes.add(deposits.size());
             if (failOnWrite && deposits.getFirst().getId() > 100) {

@@ -75,7 +75,7 @@
                                 <useSpringBoot4>true</useSpringBoot4>
                                 <useJackson3>true</useJackson3>
                                 <useSpringBuiltInValidation>true</useSpringBuiltInValidation>
-                                <useResponseEntity>false</useResponseEntity>
+                                <useResponseEntity>true</useResponseEntity>
                                 <openApiNullable>false</openApiNullable>
                                 <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
                                 <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>

@@ -1,5 +1,34 @@
 # AI-assisted development workflow
 
+## Background jobs and database-backed admission
+
+The latest user request was implemented with OpenCode, `openai/gpt-6.1-sol`, local
+read/patch/terminal tools, Maven/JDK 27, and the repository's `AGENTS.md`. Reproduce
+the task with:
+
+> Make the existing balance-update POST start a background job. Return 202 STARTED
+> with a UUID, or 409 RUNNING with the active UUID while busy. After completion/failure,
+> another POST starts a new execution. Persist a minimal execution log and use the
+> database to prevent racing handlers/application instances from both starting work.
+> Keep exactly two business endpoints, explain why no log-query endpoint is added,
+> update OpenAPI, verify with PostgreSQL/Testcontainers, and create atomic commits.
+
+AI-assisted work covers the UUID audit migration, PostgreSQL partial-unique-index
+reservation, framework-free command/result/ports, executor lifecycle and transaction
+wiring, generated API contract/controller updates, deterministic concurrent-handler
+and real-HTTP integration coverage, and scope documentation. The existing calculator
+and bounded streaming update service are reused. No additional skills/subagents or
+provider setup were needed. Design, SQL inspection examples, and operational behavior
+are in [BACKGROUND_BALANCE_UPDATES.md](BACKGROUND_BALANCE_UPDATES.md).
+
+The database/job foundation passed `mvn -q test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`; the asynchronous API checkpoint
+also passed those commands. Verification corrected the existing schema-version assertion
+for V4 and a Swagger-parser raw-schema type in the new UUID contract assertion.
+Final clean-build verification passed `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: 160 non-integration cases and
+35 PostgreSQL integration cases, with no failures, errors, or skips.
+
 ## Tools actually used
 
 - Harness: OpenCode, running in this repository with filesystem patch/read tools and terminal access.

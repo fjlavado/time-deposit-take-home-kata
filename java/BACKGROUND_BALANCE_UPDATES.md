@@ -44,6 +44,24 @@ The POST response identifies the accepted or already-active UUID. Once a job end
 another POST starts a **new** attempt; POST is not a completion-polling operation.
 GET remains the existing paginated deposit retrieval operation.
 
+## HTTP contract and wiring
+
+`POST /time-deposits/balance-updates` dispatches `StartBalanceUpdateJobCommand`.
+The handler delegates to `BalanceUpdateJob`; bootstrap supplies the background runner.
+The command bus starts no outer transaction for this command, so a request does not
+hold a connection while reservation needs another one. The worker calls the existing
+transactional use case. The internal synchronous processing command remains available
+to direct callers. A managed executor drains accepted work before datasource shutdown.
+
+- **202**: `{ "jobId": "<uuid>", "status": "STARTED", "message": "Balance update job accepted." }`
+- **409**: `{ "jobId": "<same-active-uuid>", "status": "RUNNING", "message": "A balance update job is already running." }`
+
+STARTED is an acceptance acknowledgement even if a very small job finishes before
+the response arrives. RUNNING also covers queued work. These are snapshots at admission,
+not promises about the state when a client receives the response. GET shows committed
+balances and may still show old values immediately after a 202. OpenAPI 5.0.0 describes
+both bodies; there is no Location header pointing to a nonexistent status resource.
+
 ## Verification
 
 Run `mvn test` and `mvn verify` from `java/` with JDK 25+ and Maven. Integration
@@ -57,6 +75,13 @@ The database/job foundation passed `mvn -q test` and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` on JDK 27. The initial
 verification identified an existing assertion pinned to schema V3; it was updated
 to V4, and the complete verification then passed.
+
+The completed asynchronous API passed `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: **160 non-integration cases
+and 35 PostgreSQL integration cases**, with no failures, errors, or skips. HTTP tests
+hold the worker with a latch to verify prompt acceptance, same-UUID conflicts, old
+balances before commit, single crediting, and later-group rollback with a failed audit.
+The streaming HTTP suite retains its two-connection pool to catch connection starvation.
 
 AI-assisted implementation uses OpenCode, `openai/gpt-6.1-sol`, and `java/AGENTS.md`.
 The user explicitly requested UUID IDs, database race prevention, exactly two public

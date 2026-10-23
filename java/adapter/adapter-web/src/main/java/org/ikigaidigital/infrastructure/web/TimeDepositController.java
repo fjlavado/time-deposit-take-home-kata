@@ -1,13 +1,16 @@
 package org.ikigaidigital.infrastructure.web;
 
-import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
+import org.ikigaidigital.application.command.StartBalanceUpdateJobCommand;
+import org.ikigaidigital.application.job.BalanceUpdateJobResult;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.infrastructure.web.generated.api.TimeDepositsApi;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
+import org.ikigaidigital.infrastructure.web.generated.model.BalanceUpdateJobResponse;
 import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 public final class TimeDepositController implements TimeDepositsApi {
@@ -22,15 +25,19 @@ public final class TimeDepositController implements TimeDepositsApi {
     }
 
     @Override
-    public TimeDepositPageResponse retrieveTimeDeposits(Integer page, Integer size) {
+    public ResponseEntity<TimeDepositPageResponse> retrieveTimeDeposits(Integer page, Integer size) {
         var result = queryBus.dispatch(new RetrieveTimeDepositsQuery(page, size));
-        return new TimeDepositPageResponse(result.content().stream().map(mapper::toResponse).toList(),
-                result.page(), result.size(), result.totalElements(), result.totalPages());
+        return ResponseEntity.ok(new TimeDepositPageResponse(result.content().stream().map(mapper::toResponse).toList(),
+                result.page(), result.size(), result.totalElements(), result.totalPages()));
     }
 
     @Override
-    public void updateTimeDepositBalances() {
-        // Only unprocessed monthly periods are credited; the transaction completes before 204.
-        commandBus.dispatch(new UpdateTimeDepositBalancesCommand());
+    public ResponseEntity<BalanceUpdateJobResponse> updateTimeDepositBalances() {
+        var result = commandBus.dispatch(new StartBalanceUpdateJobCommand());
+        var started = result.status() == BalanceUpdateJobResult.Status.STARTED;
+        var body = new BalanceUpdateJobResponse(result.jobId(),
+                BalanceUpdateJobResponse.StatusEnum.valueOf(result.status().name()),
+                started ? "Balance update job accepted." : "A balance update job is already running.");
+        return ResponseEntity.status(started ? 202 : 409).body(body);
     }
 }

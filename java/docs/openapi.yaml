@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Time Deposit API
-  version: 4.0.0
+  version: 5.0.0
   description: >-
-    Retrieves deposits and applies the existing interest calculator once per update request.
+    Retrieves deposits and starts background jobs applying the existing interest calculator.
     Rates are annual percentages divided by twelve. Only interest is rounded to
     two decimal places using BigDecimal.valueOf of the double interest and HALF_UP.
     The resulting interest is added to the balance without final-balance rounding.
@@ -41,22 +41,63 @@ paths:
   /time-deposits/balance-updates:
     post:
       operationId: updateTimeDepositBalances
-      summary: Apply and persist monthly interest to every deposit
+      summary: Start a background job applying monthly interest to every deposit
       description: >-
-        Each request applies one interest credit at each deposit's current age,
+        Returns immediately with a UUID identifying an accepted background execution
+        (202 STARTED), or the existing active execution (409 RUNNING). Database-backed
+        admission allows only one queued or running execution across application instances.
+        Busy requests do not enqueue work or create execution-log rows. After completion
+        or failure, another POST starts a new execution; POST is not completion polling.
+        The internal execution log has no query endpoint: the kata requires exactly two
+        business endpoints and execution-history management is outside its scope.
+        Each completed execution applies one interest credit at each deposit's current age,
         using the original calculator's annual rate divided by twelve. Repeated
         successful requests credit eligible deposits again, even at the same age.
         There is no missed-period catch-up. Basic/Student eligibility starts on day
         31 and Premium on day 46; Student stops after day 365. Unknown plans earn
         no interest. Days and withdrawals are not changed. All groups commit in one
-        transaction; an optimistic-lock conflict rolls back the entire request.
+        worker-thread transaction; an optimistic-lock conflict or processing failure rolls
+        back all balance changes and records FAILED in the execution log. COMPLETED is
+        recorded after commit. A 202 response acknowledges acceptance, not completion.
+        A GET during execution may still show the previously committed balances.
       responses:
-        '204':
-          description: All balances updated successfully; no response body
+        '202':
+          description: A new background execution was accepted; balances may not be updated yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceUpdateJob'
+              example:
+                jobId: 'a39bbdbe-5aa4-4ccc-99c9-08f0f67b4b1d'
+                status: STARTED
+                message: Balance update job accepted.
         '409':
-          description: Concurrent modification; no changes from this request committed. Retry the operation.
+          description: An execution is already queued or running; no additional execution was started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceUpdateJob'
+              example:
+                jobId: 'a39bbdbe-5aa4-4ccc-99c9-08f0f67b4b1d'
+                status: RUNNING
+                message: A balance update job is already running.
 components:
   schemas:
+    BalanceUpdateJob:
+      type: object
+      additionalProperties: false
+      required: [jobId, status, message]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: UUID of the newly accepted or already-active execution
+        status:
+          type: string
+          enum: [STARTED, RUNNING]
+          description: STARTED acknowledges acceptance; RUNNING includes queued work
+        message:
+          type: string
     TimeDepositPage:
       type: object
       additionalProperties: false

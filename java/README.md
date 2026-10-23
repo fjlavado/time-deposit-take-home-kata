@@ -26,7 +26,7 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and bidirectional mapper, aggregate persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
-| `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
+| `bootstrap` | Executable application, explicit adapter/handler/bus wiring, background executor, transaction boundaries, architecture/end-to-end tests |
 
 ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and confinement of strategy details to domain. The domain layer includes `org.ikigaidigital.domain..`, `org.ikigaidigital.interest..`, and `org.ikigaidigital.services..`. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
 
@@ -34,12 +34,12 @@ ArchUnit verifies framework-free core modules, inward dependencies, adapter isol
 
 This structure adopts Doodle's synchronous command/query bus pattern within the existing module boundaries.
 
-- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through `CommandBus`. Its handler invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes all deposit IDs in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, applies the unchanged calculator once at each deposit's current age, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one transaction; the ID cursor closes before commit, which completes before the HTTP response. See [bulk update semantics](BATCH_BALANCE_UPDATES.md).
-- **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page of deposits including withdrawals. The framework-free repository port uses domain `PageRequestVO` and `Page<TimeDeposit>` values; only the persistence adapter translates them to/from Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models, and the controller returns the generated page envelope. Query dispatch does not start a transaction. Reads use the same persisted model, so a subsequent GET sees a completed POST's updates.
+- **POST**: `TimeDepositController` dispatches `StartBalanceUpdateJobCommand` through `CommandBus`. Its handler invokes the `BalanceUpdateJob` port. Bootstrap's implementation reserves a UUID execution in the database, commits that reservation, and submits work to a managed executor. POST returns **202 STARTED**, or **409 RUNNING** with the active UUID. The worker invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes all deposit IDs in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, applies the unchanged calculator once at each deposit's current age, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one worker-thread transaction; the ID cursor closes before commit. See [background jobs](BACKGROUND_BALANCE_UPDATES.md) and [bulk update semantics](BATCH_BALANCE_UPDATES.md).
+- **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page of deposits including withdrawals. The framework-free repository port uses domain `PageRequestVO` and `Page<TimeDeposit>` values; only the persistence adapter translates them to/from Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models, and the controller returns the generated page envelope. Query dispatch does not start a transaction. GET sees committed balances; a GET immediately after acceptance may still show the previous balances.
 
-The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`; the update uses `Void` because it has no response payload. The runtime registry casts are confined to the dispatchers.
+The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`. Job submission returns a framework-free `BalanceUpdateJobResult`; the internal synchronous `UpdateTimeDepositBalancesCommand` retains `Void` for direct processing callers. The runtime registry casts are confined to the dispatchers. The transactional bus bypasses its outer transaction for job submission, which owns short audit transactions instead; this avoids holding a request-thread connection during admission.
 
-`UseCaseConfiguration` registers handlers and constructs both buses. `PersistenceAdapterConfiguration` explicitly enables Spring Data JDBC repository scanning and supplies the domain repository adapter and persistence mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions use `InterestStrategy`.
+`UseCaseConfiguration` registers processing/query handlers and constructs both buses. `BalanceUpdateJobConfiguration` registers the start handler, database-backed runner, and managed single-thread executor, whose shutdown drains work before the datasource closes. `PersistenceAdapterConfiguration` explicitly enables Spring Data JDBC repository scanning and supplies repository adapters and the persistence mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions use `InterestStrategy`.
 
 ### Spring Data JDBC persistence
 
@@ -77,6 +77,12 @@ Historical verification results are recorded in `IMPLEMENTATION_PLAN.md`.
 The incremental-processing removal and schema cleanup passed `mvn -q clean test` and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: **158 non-integration cases
 and 29 PostgreSQL integration cases**, without failures, errors, or skips.
+
+The background-job checkpoint passed `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: **160 non-integration cases
+and 35 PostgreSQL integration cases**, without failures, errors, or skips. It adds
+database-wide admission/UUID audit coverage, asynchronous 202/409 contract checks,
+worker-thread rollback and retry, and submission transaction-boundary checks.
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -118,7 +124,7 @@ Stop the local database with `docker compose down`; its named volume retains dat
 | Method | Path | Result |
 | --- | --- | --- |
 | GET | `/time-deposits?page=0&size=20` | 200 with one ID-ordered page, including withdrawals and pagination metadata |
-| POST | `/time-deposits/balance-updates` | 204, empty body, after crediting and persisting interest |
+| POST | `/time-deposits/balance-updates` | 202 with `STARTED` and a new UUID, or 409 with `RUNNING` and the active UUID |
 
 ```sh
 curl 'http://localhost:8080/time-deposits?page=0&size=20'
@@ -146,9 +152,33 @@ Example GET response:
 
 `page` is zero-based and defaults to `0`; `size` is positive and defaults to `20`. Request subsequent pages until `page + 1` reaches `totalPages` to retrieve the complete collection. A page beyond the last returns `content: []` while retaining totals; an empty database has zero elements and zero pages. Deposits without withdrawals have `withdrawals: []`. Withdrawal fields are an explicit interpretation of the assignment's unspecified nested response shape.
 
-The OpenAPI contract is version **4.0.0** because POST now credits interest once per invocation again, without incremental scheduling. The paginated GET shape introduced in version 2 remains the same.
+The OpenAPI contract is version **5.0.0** for asynchronous POST responses. The paginated GET shape introduced in version 2 remains the same.
 
-POST returns **204** after applying the calculator once to every deposit. Another successful call credits eligible deposits again at their current ages; there is no catch-up or idempotency watermark. Overlapping requests that read stale versions receive **409 Conflict**, with their entire transaction rolled back; retrying reloads current state and applies a new calculation. Days and withdrawals remain unchanged. Calculation and concurrency behavior are documented in [BATCH_BALANCE_UPDATES.md](BATCH_BALANCE_UPDATES.md).
+Example **202 Accepted** response:
+
+```json
+{
+  "jobId": "a39bbdbe-5aa4-4ccc-99c9-08f0f67b4b1d",
+  "status": "STARTED",
+  "message": "Balance update job accepted."
+}
+```
+
+While that execution is queued or running, another POST returns **409 Conflict** with
+the same `jobId`, `status: "RUNNING"`, and `message: "A balance update job is already running."`.
+The database's partial unique index prevents overlapping jobs even across application
+instances. Busy requests create no extra execution rows. After completion or failure,
+another POST starts a new execution; each completed execution may credit eligible
+deposits again at their current ages. POST is not a completion-polling operation.
+Days and withdrawals remain unchanged. The execution log records `STARTED`, `RUNNING`,
+`COMPLETED`, or `FAILED`, with start/finish timestamps. Failures roll back the balance
+transaction before the failed audit is recorded.
+
+**There is no execution-log query endpoint:** the assignment requires exactly two
+business endpoints, and a public execution-history/status API would expand the kata's
+scope. The table is an internal audit and concurrency gate. Inspect counts/outcomes
+using the SQL examples in [BACKGROUND_BALANCE_UPDATES.md](BACKGROUND_BALANCE_UPDATES.md).
+Calculation behavior is documented in [BATCH_BALANCE_UPDATES.md](BATCH_BALANCE_UPDATES.md).
 
 ### Contract-first code generation
 
@@ -160,7 +190,7 @@ To generate the contract code on its own:
 mvn -pl adapter/adapter-web -am generate-sources
 ```
 
-Generated `TimeDepositsApi`, `TimeDepositPageResponse`, `TimeDepositResponse`, and `WithdrawalResponse` sources live under `adapter/adapter-web/target/generated-sources/openapi/src/main/java/`, in `org.ikigaidigital.infrastructure.web.generated` subpackages. Maven adds that directory to compilation automatically. Generated files are build output: edit the contract and regenerate rather than editing or committing them.
+Generated `TimeDepositsApi`, `TimeDepositPageResponse`, `TimeDepositResponse`, `WithdrawalResponse`, and `BalanceUpdateJobResponse` sources live under `adapter/adapter-web/target/generated-sources/openapi/src/main/java/`, in `org.ikigaidigital.infrastructure.web.generated` subpackages. Maven adds that directory to compilation automatically. Generated files are build output: edit the contract and regenerate rather than editing or committing them. Generated operation signatures use `ResponseEntity` so the controller can choose POST's 202 or 409 at runtime.
 
 `TimeDepositController` implements the generated interface, dispatches typed command/query records, and delegates domain-to-response conversion to `TimeDepositApiMapper`. The generator emits abstract operation signatures so contract changes must be implemented at compile time. The contract's `double` balance, decimal withdrawal amount (`BigDecimal`), and date (`LocalDate`) mappings preserve the existing deposit representation. The web adapter includes the validation starter required by the generated pagination parameter constraints.
 
@@ -264,6 +294,7 @@ Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/
 - `V1__create_time_deposit_schema.sql` creates the quoted `"timeDeposits"` table and camel-case columns, `withdrawals`, required constraints, and the foreign-key index.
 - `V2__add_withdrawals_and_calculation_tracking.sql` historically added `last_processed_days` and `version`, both defaulting to zero. The application no longer maps or uses `last_processed_days`; `version` still supports optimistic locking. Withdrawals and its index already exist in V1.
 - `V3__remove_calculation_watermark.sql` drops `last_processed_days` and its check constraint. Existing balances, versions, withdrawals, and their index are preserved; no previously credited interest is reversed. Integration coverage upgrades populated V1 and V2 schemas and validates their migration histories.
+- `V4__create_balance_update_executions.sql` adds the UUID execution audit and a partial unique index permitting only one `STARTED`/`RUNNING` row database-wide. Terminal-status/timestamp constraints keep the minimal log consistent. No existing deposit data changes.
 - Do not modify an already-applied migration; startup validates recorded checksums.
 - Flyway is the only schema initializer. Spring SQL initialization is disabled; no ORM schema generation is used.
 - Flyway clean is disabled in application configuration. Integration tests use disposable PostgreSQL instances.

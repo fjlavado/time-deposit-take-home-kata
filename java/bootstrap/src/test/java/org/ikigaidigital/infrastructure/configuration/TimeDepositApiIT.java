@@ -19,9 +19,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -42,7 +44,7 @@ class TimeDepositApiIT {
 
     @BeforeEach
     void resetData() {
-        jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
+        jdbc.execute("TRUNCATE balance_update_executions, withdrawals, \"timeDeposits\" RESTART IDENTITY");
         jdbc.execute("""
                 INSERT INTO "timeDeposits" (id, "planType", balance, days)
                 VALUES (1, 'basic', 1000, 31), (2, 'premium', 1000, 45), (3, 'student', 1000, 366)
@@ -80,10 +82,7 @@ class TimeDepositApiIT {
 
     @Test
     void postPersistsAndSubsequentGetReturnsUpdatedBalances() throws Exception {
-        var response = request("POST", "/time-deposits/balance-updates");
-
-        assertThat(response.statusCode()).isEqualTo(204);
-        assertThat(response.body()).isEmpty();
+        var first = startAndAwaitJob();
         var deposits = json.readTree(request("GET", "/time-deposits").body()).get("content");
         assertThat(deposits.get(0).get("balance").asDouble()).isEqualTo(1000.83);
         assertThat(deposits.get(1).get("balance").asDouble()).isEqualTo(1000);
@@ -93,9 +92,11 @@ class TimeDepositApiIT {
         assertThat(jdbc.queryForObject("SELECT days FROM \"timeDeposits\" WHERE id = 1", Integer.class)).isEqualTo(31);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM withdrawals", Integer.class)).isEqualTo(2);
 
-        assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
+        assertThat(startAndAwaitJob()).isNotEqualTo(first);
         assertThat(json.readTree(request("GET", "/time-deposits").body()).get("content").get(0).get("balance").asDouble())
                 .isCloseTo(1001.66, within(1e-9));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM balance_update_executions WHERE status = 'COMPLETED'", Integer.class))
+                .isEqualTo(2);
     }
 
     @Test
@@ -106,7 +107,7 @@ class TimeDepositApiIT {
         assertThat(empty.get("content").isEmpty()).isTrue();
         assertThat(empty.get("totalElements").asLong()).isZero();
         assertThat(empty.get("totalPages").asLong()).isZero();
-        assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
+        startAndAwaitJob();
         assertThat(json.readTree(request("GET", "/time-deposits").body()).get("content").isEmpty()).isTrue();
     }
 
@@ -118,7 +119,7 @@ class TimeDepositApiIT {
                 VALUES (1, 'basic', 18, 31), (2, 'student', 6, 31)
                 """);
 
-        assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
+        startAndAwaitJob();
 
         var deposits = json.readTree(request("GET", "/time-deposits").body()).get("content");
         assertThat(deposits.get(0).get("balance").asDouble()).isEqualTo(18.02);
@@ -151,6 +152,19 @@ class TimeDepositApiIT {
         assertThat(beyond.get("content").isEmpty()).isTrue();
         assertThat(beyond.get("totalElements").asLong()).isEqualTo(3);
         assertThat(beyond.get("totalPages").asLong()).isEqualTo(2);
+    }
+
+    private UUID startAndAwaitJob() throws Exception {
+        var response = request("POST", "/time-deposits/balance-updates");
+        assertThat(response.statusCode()).isEqualTo(202);
+        var body = json.readTree(response.body());
+        assertThat(body.get("status").asString()).isEqualTo("STARTED");
+        assertThat(body.get("message").asString()).isEqualTo("Balance update job accepted.");
+        var id = UUID.fromString(body.get("jobId").asString());
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(jdbc.queryForObject("SELECT status FROM balance_update_executions WHERE id = ?", String.class, id))
+                        .isEqualTo("COMPLETED"));
+        return id;
     }
 
     private HttpResponse<String> request(String method, String path) throws Exception {

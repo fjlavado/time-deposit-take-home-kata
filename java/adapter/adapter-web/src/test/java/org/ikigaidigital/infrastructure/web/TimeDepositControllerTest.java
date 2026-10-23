@@ -1,7 +1,9 @@
 package org.ikigaidigital.infrastructure.web;
 
 import io.swagger.v3.parser.OpenAPIV3Parser;
-import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
+import io.swagger.v3.oas.models.media.Schema;
+import org.ikigaidigital.application.command.StartBalanceUpdateJobCommand;
+import org.ikigaidigital.application.job.BalanceUpdateJobResult;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
@@ -12,6 +14,7 @@ import org.ikigaidigital.domain.model.Page;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
+import org.ikigaidigital.infrastructure.web.generated.model.BalanceUpdateJobResponse;
 import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,7 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,7 +40,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -78,15 +81,26 @@ class TimeDepositControllerTest {
     }
 
     @Test
-    void delegatesEachUpdateAndReturnsNoBody() throws Exception {
+    void returnsAcceptedOrConflictWithTheSameExecutionUuid() throws Exception {
+        var id = UUID.randomUUID();
+        when(commands.dispatch(new StartBalanceUpdateJobCommand()))
+                .thenReturn(new BalanceUpdateJobResult(id, BalanceUpdateJobResult.Status.STARTED))
+                .thenReturn(new BalanceUpdateJobResult(id, BalanceUpdateJobResult.Status.RUNNING));
         var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
 
         mvc.perform(post("/time-deposits/balance-updates"))
-                .andExpect(status().isNoContent()).andExpect(content().string(""));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$.jobId").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("STARTED"))
+                .andExpect(jsonPath("$.message").value("Balance update job accepted."));
         mvc.perform(post("/time-deposits/balance-updates"))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.jobId").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("RUNNING"))
+                .andExpect(jsonPath("$.message").value("A balance update job is already running."));
 
-        verify(commands, times(2)).dispatch(new UpdateTimeDepositBalancesCommand());
+        verify(commands, times(2)).dispatch(new StartBalanceUpdateJobCommand());
         mvc.perform(get("/time-deposits")).andExpect(jsonPath("$.content").isEmpty());
     }
 
@@ -140,7 +154,8 @@ class TimeDepositControllerTest {
 
         assertThat(documented).containsExactlyInAnyOrder("GET /time-deposits", "POST /time-deposits/balance-updates");
         assertThat(implemented).isEqualTo(documented);
-        var responseTypes = List.of(TimeDepositPageResponse.class, TimeDepositResponse.class, WithdrawalResponse.class);
+        var responseTypes = List.of(TimeDepositPageResponse.class, TimeDepositResponse.class,
+                WithdrawalResponse.class, BalanceUpdateJobResponse.class);
         for (var responseType : responseTypes) {
             var schema = api.getComponents().getSchemas().get(responseType.getSimpleName().replace("Response", ""));
             assertThat(schema.getProperties().keySet()).containsExactlyInAnyOrderElementsOf(
@@ -151,7 +166,10 @@ class TimeDepositControllerTest {
         assertThat(api.getPaths().get("/time-deposits").getGet().getResponses()).containsKey("200");
         assertThat(api.getPaths().get("/time-deposits").getGet().getParameters())
                 .extracting(parameter -> parameter.getName()).containsExactly("page", "size");
-        assertThat(api.getPaths().get("/time-deposits/balance-updates").getPost().getResponses()).containsKey("204");
+        var updates = api.getPaths().get("/time-deposits/balance-updates").getPost().getResponses();
+        assertThat(updates).containsOnlyKeys("202", "409");
+        var jobId = (Schema<?>) api.getComponents().getSchemas().get("BalanceUpdateJob").getProperties().get("jobId");
+        assertThat(jobId.getFormat()).isEqualTo("uuid");
     }
 
     private TimeDepositController controller() {
