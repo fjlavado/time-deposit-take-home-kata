@@ -77,7 +77,7 @@ Default phases, with one request per virtual user and an **open arrival model**:
 | Smoke | One GET and one POST, followed by SQL completion wait | Until completion |
 | Baseline | 50 GET/s | 60 seconds |
 | Mixed stress | GET at 25, 100, 175/s; 20 simultaneous POST attempts plus 0.1 POST/s | Three 30-second levels, two 10-second ramps |
-| Completion wait | SQL audit inspection, no POST polling | Up to 180 seconds |
+| Completion wait | SQL audit and database activity inspection, no POST polling | Up to 180 seconds |
 | Recovery | 10 GET/s, after background processing ends | 30 seconds |
 
 GET chooses pages uniformly across the entire dataset, including deep offsets
@@ -88,6 +88,12 @@ The first smoke run also warms application and database paths; no cold-start
 latency claim is made from later phases. Expected total is about 5–10 minutes
 including job waits and JVM/report overhead, excluding the build; slow machines
 may exceed this. The completion timeout is per wait, not a total-run deadline.
+
+The completion wait requires five seconds with terminal audits and no other
+busy database client sessions before starting recovery. Final integrity/audit
+snapshots are taken after graceful application shutdown. A timed-out HTTP POST
+can still be admitted later: `unacknowledgedAuditIds` exposes these UUIDs and
+UUID reconciliation fails rather than hiding the uncertain client outcome.
 
 POST checks `202 STARTED` / `409 RUNNING` and UUID bodies. Busy responses are
 **successful admission behavior**, counted separately from unexpected HTTP/check

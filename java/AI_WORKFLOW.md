@@ -25,6 +25,16 @@ and refusal to silently accept missing/changed report data. `mvn -q test` passed
 The runner archives reports because this plugin pins its results directory, and
 extracts the HTML table because Gatling 3.16 writes binary simulation logs.
 
+The first full 100,000-deposit / 500,005-withdrawal run exposed real saturation:
+50 GET/s passed, while mixed load timed out extensively. A timed-out POST was
+admitted later after the runner briefly observed no active audit. This drove a
+measurement correction: require a quiet database window before recovery, capture
+final audits/data after graceful shutdown, expose unacknowledged audit UUIDs,
+and check audit intervals for overlap. Two regression checks cover late admission
+and bounded waits; all five Python checks and the corrected real-HTTP quick
+evaluation passed. The stress workload and budgets were not reduced to hide the
+observed failures. Full `mvn -q -Pperformance verify` also passed before that run.
+
 ## Background jobs and database-backed admission
 
 The latest user request was implemented with OpenCode, `openai/gpt-6.1-sol`, local

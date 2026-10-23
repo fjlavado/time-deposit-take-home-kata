@@ -102,12 +102,23 @@ def summarize_report(path):
 
 def wait_for_jobs(timeout):
     deadline = time.monotonic() + timeout
+    quiet_since = None
     while True:
         executions = jobs()
-        if not any(job["status"] in ("STARTED", "RUNNING") for job in executions):
-            return executions
+        # A timed-out POST may still be queued server-side and reserve a job later.
+        # Require a quiet database window as well as terminal audits before recovery.
+        busy_connections = db("""SELECT count(*) FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+            AND backend_type = 'client backend' AND state <> 'idle'""")
+        if not any(job["status"] in ("STARTED", "RUNNING") for job in executions) and busy_connections == 0:
+            if quiet_since is None:
+                quiet_since = time.monotonic()
+            elif time.monotonic() - quiet_since >= 5:
+                return executions
+        else:
+            quiet_since = None
         if time.monotonic() >= deadline:
-            raise TimeoutError(f"Background job still active after {timeout}s; inspect jobs.json and application.log")
+            raise TimeoutError(f"Jobs/database activity did not settle after {timeout}s; inspect jobs.json and application.log")
         time.sleep(2)
 
 
@@ -228,40 +239,50 @@ def evaluate(args, output):
             wait_for_jobs(args.completion_timeout)
             phases["recovery"] = run_phase("recovery", "read", args, output,
                                            {"rate": 10, "seconds": args.recovery_seconds})
-            after = snapshot()
-            executions = jobs()
-            accepted = [id_ for phase in phases.values() for id_ in phase["outcomes"]["acceptedIds"]]
-            busy_ids = {id_ for phase in phases.values() for id_ in phase["outcomes"]["busyIds"]}
-            completed = sum(job["status"] == "COMPLETED" for job in executions)
-            for job in executions:
-                job["depositsPerSecond"] = round(args.deposits / job["seconds"], 2) if job["seconds"] else None
-            checks = {
-                "immutableDataPreserved": all(before[k] == after[k] for k in
-                    ("deposits", "withdrawals", "depositMetadata", "withdrawalData")),
-                "allJobsCompleted": bool(executions) and completed == len(executions),
-                "acceptedIdsMatchAudit": len(accepted) == len(set(accepted))
-                    and set(accepted) == {job["id"] for job in executions},
-                "acceptedCountMatchesIds": all(p["outcomes"]["accepted"] == len(p["outcomes"]["acceptedIds"])
-                                                for p in phases.values()),
-                "busyIdsReferToAcceptedJobs": busy_ids <= set(accepted),
-                "everyDepositSavedOncePerCompletedJob": after["minVersion"] == after["maxVersion"] == completed,
-                "gatlingAssertionsPassed": all(p["exitCode"] == 0 for p in phases.values()),
-            }
-            summary.update(after=after, jobs=executions, checks=checks, passed=all(checks.values()))
-            return summary
+        except Exception as error:
+            summary["evaluationError"] = str(error)
+            (output / "failure.json").write_text(json.dumps({"error": str(error)}, indent=2) + "\n")
         finally:
             stop.set()
             if monitor:
                 monitor.join(timeout=30)
+            app.terminate()  # Graceful Boot shutdown drains HTTP requests and submitted work.
             try:
+                app.wait(timeout=args.completion_timeout)
+            except subprocess.TimeoutExpired:
+                raise TimeoutError(f"Application PID {app.pid} is still draining; inspect application.log. It was not killed.")
+            finally:
                 (output / "jobs.json").write_text(json.dumps(jobs(), indent=2) + "\n")
                 (output / "partial-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-            finally:
-                app.terminate()  # Graceful Boot shutdown drains submitted work; never kill a balance transaction.
-                try:
-                    app.wait(timeout=args.completion_timeout)
-                except subprocess.TimeoutExpired:
-                    print(f"Application PID {app.pid} is still draining; inspect application.log. It was not killed.", flush=True)
+    # No request can reserve a later job after these final snapshots.
+    after = snapshot()
+    executions = jobs()
+    phases = summary["phases"]
+    accepted = [id_ for phase in phases.values() for id_ in phase["outcomes"]["acceptedIds"]]
+    busy_ids = {id_ for phase in phases.values() for id_ in phase["outcomes"]["busyIds"]}
+    audit_ids = {job["id"] for job in executions}
+    completed = sum(job["status"] == "COMPLETED" for job in executions)
+    for job in executions:
+        job["depositsPerSecond"] = round(args.deposits / job["seconds"], 2) if job["seconds"] else None
+    checks = {
+        "immutableDataPreserved": all(before[k] == after[k] for k in
+            ("deposits", "withdrawals", "depositMetadata", "withdrawalData")),
+        "allJobsCompleted": bool(executions) and completed == len(executions),
+        "acceptedIdsMatchAudit": len(accepted) == len(set(accepted)) and set(accepted) == audit_ids,
+        "acceptedCountMatchesIds": all(p["outcomes"]["accepted"] == len(p["outcomes"]["acceptedIds"])
+                                        for p in phases.values()),
+        "busyIdsReferToAcceptedJobs": busy_ids <= set(accepted),
+        "everyDepositSavedOncePerCompletedJob": after["minVersion"] == after["maxVersion"] == completed,
+        "gatlingAssertionsPassed": all(p["exitCode"] == 0 for p in phases.values()),
+        "allLoadPhasesCompleted": set(phases) == {"smoke", "baseline", "mixed", "recovery"},
+        "evaluationCompleted": "evaluationError" not in summary,
+        "jobIntervalsDoNotOverlap": all(a["finished_at"] is not None
+            and datetime.fromisoformat(a["finished_at"]) <= datetime.fromisoformat(b["started_at"])
+            for a, b in zip(executions, executions[1:])),
+    }
+    summary.update(after=after, jobs=executions, checks=checks, passed=all(checks.values()),
+                   unacknowledgedAuditIds=sorted(audit_ids - set(accepted)))
+    return summary
 
 
 def main():

@@ -2,8 +2,9 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from run import summarize_report
+from run import summarize_report, wait_for_jobs
 
 
 # Representative report markup: hidden sort keys must not become request names;
@@ -43,6 +44,26 @@ class ReportingTest(unittest.TestCase):
     def test_changed_column_layout_fails_instead_of_inventing_metrics(self):
         with self.assertRaises(KeyError):
             self.parse(REPORT.replace('class="value total col-10"', 'class="different"'))
+
+    def test_completion_wait_catches_admission_after_a_client_timeout(self):
+        clock = [0]
+        completed = [{"status": "COMPLETED"}]
+        # There is initially no audit, but busy server requests later admit work.
+        with patch("run.jobs", side_effect=[[], [], [{"status": "RUNNING"}],
+                                            completed, completed, completed, completed]) as read_jobs, \
+                patch("run.db", side_effect=[1, 1, 0, 0, 0, 0, 0]), \
+                patch("run.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("run.time.sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            self.assertEqual(wait_for_jobs(30), completed)
+            self.assertEqual(read_jobs.call_count, 7)
+
+    def test_unsettled_server_work_has_a_bounded_wait(self):
+        clock = [0]
+        with patch("run.jobs", return_value=[]), patch("run.db", return_value=1), \
+                patch("run.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("run.time.sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(TimeoutError):
+                wait_for_jobs(4)
 
 
 if __name__ == "__main__":
