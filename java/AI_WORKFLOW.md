@@ -235,7 +235,7 @@ The user requested inherited CRUD members and paginated search. After clarificat
 they selected **CRUD only in persistence** and **paginated GET**. OpenCode with
 `openai/gpt-6.1-sol` preserved the user's change to `CrudRepository` and removed
 unused imports, while keeping the domain port independent of Spring Data. The port
-now uses framework-free `PageRequest` and `Page<TimeDeposit>` values. The query,
+now uses framework-free `PageRequestVO` and `Page<TimeDeposit>` values. The query,
 generated OpenAPI interface/DTOs, controller, and tests carry page parameters and
 metadata end to end. OpenAPI 2.0.0 documents the new GET page envelope.
 

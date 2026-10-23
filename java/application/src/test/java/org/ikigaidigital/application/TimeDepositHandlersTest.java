@@ -11,7 +11,7 @@ import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.domain.model.PageRequestVO;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
@@ -128,7 +128,7 @@ class TimeDepositHandlersTest {
     private static final class InMemoryRepository implements TimeDepositRepository, TimeDepositRepositoryPort {
         private final List<TimeDeposit> deposits;
         private final List<Integer> savedIds = new ArrayList<>();
-        private final List<PageRequest> searches = new ArrayList<>();
+        private final List<PageRequestVO> searches = new ArrayList<>();
         private int saveCalls;
         private int lockCalls;
 
@@ -137,7 +137,7 @@ class TimeDepositHandlersTest {
         }
 
         @Override
-        public Page<TimeDeposit> search(PageRequest request) {
+        public Page<TimeDeposit> search(PageRequestVO request) {
             searches.add(request);
             int start = (int) Math.min((long) request.page() * request.size(), deposits.size());
             int end = Math.min(start + request.size(), deposits.size());

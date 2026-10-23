@@ -3,12 +3,13 @@ package org.ikigaidigital.infrastructure.persistence;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.domain.model.PageRequestVO;
 import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositIdTable;
 import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositTable;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
@@ -29,9 +30,9 @@ public final class JdbcTimeDepositRepository implements TimeDepositRepository {
     }
 
     @Override
-    public Page<TimeDeposit> search(PageRequest request) {
+    public Page<TimeDeposit> search(PageRequestVO request) {
         // Use inherited paging and database ordering, never an unbounded in-memory slice.
-        var result = pages.findAll(org.springframework.data.domain.PageRequest.of(
+        var result = pages.findAll(PageRequest.of(
                 request.page(), request.size(), Sort.by("id")));
         // JDBC's paged aggregate read falls back to child queries. Page IDs, then use
         // inherited findAllById for single-query loading of the bounded aggregate set.

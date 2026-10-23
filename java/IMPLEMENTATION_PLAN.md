@@ -152,7 +152,7 @@ also passed after normalizing absent mapped withdrawals to an empty set.
 ## Inherited CRUD and paginated search — 2026-10-23
 
 - [x] Preserve the user's `CrudRepository<TimeDepositTable, Integer>` inheritance without redeclaring `findAll`.
-- [x] Keep domain/application free of Spring Data, as selected by the user; introduce domain `PageRequest`/`Page` values and replace unbounded reads with `search(PageRequest)`.
+- [x] Keep domain/application free of Spring Data, as selected by the user; introduce domain `PageRequestVO`/`Page` values and replace unbounded reads with `search(PageRequestVO)`.
 - [x] Use inherited `PagingAndSortingRepository.findAll(Pageable)` for an ID-only table view, then inherited `CrudRepository.findAllById` for mapped-collection aggregate loading.
 - [x] Keep query count bounded: at most three reads per populated page (IDs, optional count, mapped aggregates), with no per-deposit child queries. No schema changes are required.
 - [x] Expose `page`/`size` parameters with defaults 0/20 and a generated page response containing `content`, `page`, `size`, `totalElements`, and `totalPages`. Version the OpenAPI contract as 2.0.0 for the changed GET response shape.

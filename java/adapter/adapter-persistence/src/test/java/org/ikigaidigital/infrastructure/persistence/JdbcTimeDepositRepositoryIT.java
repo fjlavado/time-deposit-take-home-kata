@@ -4,7 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.interest.vo.PlanType;
-import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.domain.model.PageRequestVO;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;
@@ -136,13 +136,13 @@ class JdbcTimeDepositRepositoryIT {
     @Test
     void retrievesEmptyDatabase() {
         READ_QUERIES.set(0);
-        var page = repository.search(new PageRequest(0, 20));
+        var page = repository.search(new PageRequestVO(0, 20));
         assertThat(page.content()).isEmpty();
         assertThat(page.totalElements()).isZero();
         assertThat(READ_QUERIES.get()).isEqualTo(1);
         transaction.executeWithoutResult(status -> {
             repository.lockForBalanceUpdate();
-            assertThat(repository.search(new PageRequest(0, 20)).content()).isEmpty();
+            assertThat(repository.search(new PageRequestVO(0, 20)).content()).isEmpty();
             repository.saveBalances(List.of());
         });
     }
@@ -161,7 +161,7 @@ class JdbcTimeDepositRepositoryIT {
         jdbc.execute("INSERT INTO \"timeDeposits\" (id, \"planType\", balance, days) VALUES (3, 'premium', 3000, 46)");
 
         READ_QUERIES.set(0);
-        var page = repository.search(new PageRequest(0, 20));
+        var page = repository.search(new PageRequestVO(0, 20));
         var deposits = page.content();
 
         assertThat(READ_QUERIES.get()).as("one ID page plus one aggregate query, including all withdrawals")
@@ -197,7 +197,7 @@ class JdbcTimeDepositRepositoryIT {
                 """);
 
         READ_QUERIES.set(0);
-        var first = repository.search(new PageRequest(0, 2));
+        var first = repository.search(new PageRequestVO(0, 2));
 
         assertThat(READ_QUERIES.get()).as("one ID page, one count, one aggregate read; no child queries")
                 .isEqualTo(3);
@@ -208,14 +208,14 @@ class JdbcTimeDepositRepositoryIT {
         assertThat(first.totalPages()).isEqualTo(2);
         assertThat(first.hasNext()).isTrue();
 
-        var last = repository.search(new PageRequest(1, 2));
+        var last = repository.search(new PageRequestVO(1, 2));
         assertThat(last.content()).extracting(TimeDeposit::getId).containsExactly(3);
         assertThat(last.page()).isEqualTo(1);
         assertThat(last.size()).isEqualTo(2);
         assertThat(last.totalElements()).isEqualTo(3);
         assertThat(last.hasNext()).isFalse();
 
-        var beyond = repository.search(new PageRequest(2, 2));
+        var beyond = repository.search(new PageRequestVO(2, 2));
         assertThat(beyond.content()).isEmpty();
         assertThat(beyond.totalElements()).isEqualTo(3);
         assertThat(beyond.totalPages()).isEqualTo(2);
@@ -233,7 +233,7 @@ class JdbcTimeDepositRepositoryIT {
             repository.saveBalances(List.of(new TimeDeposit(1, PlanType.PREMIUM, balance, 99, List.of())));
         });
 
-        var actual = repository.search(new PageRequest(0, 20)).content().getFirst();
+        var actual = repository.search(new PageRequestVO(0, 20)).content().getFirst();
         assertThat(actual.getBalance()).isEqualTo(balance);
         assertThat(actual.getPlanType()).isEqualTo(PlanType.BASIC);
         assertThat(actual.getDays()).isEqualTo(31);

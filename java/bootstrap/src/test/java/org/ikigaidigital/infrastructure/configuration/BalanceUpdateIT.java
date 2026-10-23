@@ -13,7 +13,7 @@ import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
-import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.domain.model.PageRequestVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -135,7 +135,7 @@ class BalanceUpdateIT {
             assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS))).contains(true);
         }
 
-        assertThat(repository.search(new PageRequest(0, 20)).content().get(1).getBalance()).isEqualTo(1002.5);
+        assertThat(repository.search(new PageRequestVO(0, 20)).content().get(1).getBalance()).isEqualTo(1002.5);
     }
 
     private boolean tryUpdate() {

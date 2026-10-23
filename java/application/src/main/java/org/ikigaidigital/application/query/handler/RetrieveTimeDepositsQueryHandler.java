@@ -3,7 +3,7 @@ package org.ikigaidigital.application.query.handler;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequest;
+import org.ikigaidigital.domain.model.PageRequestVO;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 
 public final class RetrieveTimeDepositsQueryHandler
@@ -21,6 +21,6 @@ public final class RetrieveTimeDepositsQueryHandler
 
     @Override
     public Page<TimeDeposit> handle(RetrieveTimeDepositsQuery query) {
-        return repository.search(new PageRequest(query.page(), query.size()));
+        return repository.search(new PageRequestVO(query.page(), query.size()));
     }
 }
