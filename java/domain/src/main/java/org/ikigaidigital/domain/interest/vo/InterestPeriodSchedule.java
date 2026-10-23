@@ -15,7 +15,7 @@ public record InterestPeriodSchedule(PlanType value) implements ValueObject<Plan
         // Long arithmetic avoids overflow near Integer.MAX_VALUE.
         long next = lastProcessedDays < first ? first
                 : first + (((long) lastProcessedDays - first) / 30 + 1) * 30;
-        int count = next > end ? 0 : (int) (((long) end - next) / 30 + 1);
+        int count = next > end ? 0 : (int) ((end - next) / 30 + 1);
         return IntStream.range(0, count).map(index -> (int) (next + (long) index * 30));
     }
 }
