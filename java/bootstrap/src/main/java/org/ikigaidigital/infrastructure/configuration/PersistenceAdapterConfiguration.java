@@ -25,17 +25,15 @@ public class PersistenceAdapterConfiguration {
     @Bean
     NamedParameterJdbcTemplate depositJdbcOperations(DataSource dataSource) {
         var template = new JdbcTemplate(dataSource);
-        // PostgreSQL uses a server-side cursor only with a positive fetch size
-        // AND autocommit disabled by the encompassing use-case transaction.
+        // A positive fetch size and the outer transaction enable PostgreSQL server-side fetching.
         template.setFetchSize(100);
         return new NamedParameterJdbcTemplate(template);
     }
 
     @Bean
     TimeDepositRepositoryPort balanceUpdateRepository(TimeDepositBalanceJdbcRepository deposits,
-                                                      TimeDepositPersistenceMapper mapper,
-                                                      NamedParameterJdbcTemplate depositJdbcOperations) {
-        return new TimeDepositRepositoryAdapter(deposits, mapper, depositJdbcOperations.getJdbcOperations());
+                                                      TimeDepositPersistenceMapper mapper) {
+        return new TimeDepositRepositoryAdapter(deposits, mapper);
     }
 
     @Bean
