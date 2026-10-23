@@ -1,5 +1,20 @@
 # AI-assisted development workflow
 
+## Development sample-data profile — 2026-10-23
+
+OpenCode (`openai/gpt-6.1-sol`), following the same local tooling and agent rules
+as the Swagger step, added a Spring `dev` profile and persistence-owned Flyway
+callback. The fixture covers eligibility boundaries, rounding, unknown/zero
+balances, withdrawal/no-withdrawal responses, pagination and multiple update
+groups. A table lock and empty-table guard preserve existing data on repeated
+or concurrent dev startup. No schema-history entry is added by the callback.
+AI assistance covered SQL/profile configuration, PostgreSQL integration coverage
+for actual application startup and updates, and reproducible usage documentation.
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed all unit,
+architecture and PostgreSQL integration checks, including four new dev-profile
+cases covering default isolation, full-fixture processing, restart/profile
+switching and preservation of pre-existing data. `git diff --check` passed.
+
 ## Embedded Swagger console — 2026-10-23
 
 OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved embedded Swagger

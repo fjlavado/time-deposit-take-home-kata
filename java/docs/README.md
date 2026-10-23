@@ -109,7 +109,16 @@ mvn package
 java -jar bootstrap/target/bootstrap-1.0-SNAPSHOT.jar
 ```
 
-Startup applies and validates Flyway migrations. A fresh database starts empty.
+Startup applies and validates Flyway migrations. With the default profile a fresh
+database starts empty. For a ready-to-explore sample dataset, enable `dev`:
+
+```sh
+java -jar bootstrap/target/bootstrap-1.0-SNAPSHOT.jar --spring.profiles.active=dev
+```
+
+Alternatively set `SPRING_PROFILES_ACTIVE=dev`. Open
+<http://localhost:8080/swagger-ui.html> to retrieve sample deposits and start a
+balance update.
 
 | Environment variable | Local default |
 | --- | --- |
@@ -117,10 +126,46 @@ Startup applies and validates Flyway migrations. A fresh database starts empty.
 | `DB_USERNAME` | `time_deposit` |
 | `DB_PASSWORD` | `time_deposit` |
 | `PORT` | `8080` |
+| `SPRING_PROFILES_ACTIVE` | No active profile; use `dev` to seed an empty database |
 
 The Compose credentials are local development defaults. The application also supports externally supplied database settings.
 
-For example data, after the first successful application startup:
+### Development sample data
+
+The `dev` profile adds a Flyway `afterMigrate` callback from the persistence
+adapter's `db/dev/` location. It inserts **120 deposits and 120 withdrawals** only
+when the deposit table is empty. Existing databases are left intact; restarts
+preserve credited balances and do not duplicate samples. Deleting every deposit
+causes the next dev startup to seed again. The callback is transactional and
+serializes concurrent seed attempts. It adds no versioned migration, so switching
+back to the default profile keeps Flyway validation compatible.
+
+On a fresh database, the first twelve deposits are:
+
+| ID | Plan | Days | Initial balance | Balance after one completed update |
+| --- | --- | --- | --- | --- |
+| 1 | basic | 30 | 1000 | 1000 |
+| 2 | basic | 31 | 1000 | 1000.83 |
+| 3 | student | 30 | 1000 | 1000 |
+| 4 | student | 31 | 1000 | 1002.50 |
+| 5 | student | 365 | 1000 | 1002.50 |
+| 6 | student | 366 | 1000 | 1000 |
+| 7 | premium | 45 | 1000 | 1000 |
+| 8 | premium | 46 | 1000 | 1004.17 |
+| 9 | basic | 31 | 18 | 18.02 |
+| 10 | student | 31 | 6 | 6.02 |
+| 11 | FuturePlan | 46 | 1000 | 1000 |
+| 12 | basic | 31 | 0 | 0 |
+
+The other 108 deposits cycle through the three supported plans at day 60, with
+balances from 1000.10 through 1010.80. There are six pages at the default size 20
+and two processing groups at size 100. Even-ID deposits have two withdrawals
+(`12.34` on `2026-01-02` and `0.10` on `2026-01-03`); odd-ID deposits have none.
+IDs are generated normally; a previously used identity sequence can start higher.
+POST returns acceptance immediately; use GET after completion to observe the
+changes. Repeat successful POSTs apply interest again.
+
+For a small manual alternative without the dev profile, after startup:
 
 ```sh
 docker compose exec -T postgres psql -U time_deposit -d time_deposits < docs/sample-data.sql
@@ -310,6 +355,7 @@ Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/
 - `V2__add_withdrawals_and_calculation_tracking.sql` historically added `last_processed_days` and `version`, both defaulting to zero. The application no longer maps or uses `last_processed_days`; `version` still supports optimistic locking. Withdrawals and its index already exist in V1.
 - `V3__remove_calculation_watermark.sql` drops `last_processed_days` and its check constraint. Existing balances, versions, withdrawals, and their index are preserved; no previously credited interest is reversed. Integration coverage upgrades populated V1 and V2 schemas and validates their migration histories.
 - `V4__create_balance_update_executions.sql` adds the UUID execution audit and a partial unique index permitting only one `STARTED`/`RUNNING` row database-wide. Terminal-status/timestamp constraints keep the minimal log consistent. No existing deposit data changes.
+- The optional `db/dev/afterMigrate__sample_data.sql` callback seeds only empty databases with the `dev` profile. It is not a schema migration and is not included in default-profile startup.
 - Do not modify an already-applied migration; startup validates recorded checksums.
 - Flyway is the only schema initializer. Spring SQL initialization is disabled; no ORM schema generation is used.
 - Flyway clean is disabled in application configuration. Integration tests use disposable PostgreSQL instances.
