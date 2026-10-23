@@ -37,6 +37,7 @@ public final class UpdateDepositBalancesService implements UpdateDepositBalances
         }
     }
 
+    // Runs synchronously inside the decorator's transaction; this helper needs no separate boundary.
     private void updateGroup(List<Integer> ids) {
         var deposits = repository.findAllById(ids);
         // Each request applies the existing calculator once at the deposit's current age.

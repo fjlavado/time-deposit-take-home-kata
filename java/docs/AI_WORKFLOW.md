@@ -1,5 +1,28 @@
 # AI-assisted development workflow
 
+## Transaction-boundary review and regression coverage — 2026-10-23
+
+OpenCode (`openai/gpt-6.1-sol`) traced the HTTP submission, background worker,
+Spring transactional decorator, private group helper, and independent audit
+transactions after the user raised method-visibility concerns. The user then
+requested applying and committing the resulting changes. The review confirmed
+that the public decorator is already the correct proxy entry point; private
+helpers participate in its existing transaction.
+
+AI assistance added focused source comments, documented proxy/self-invocation
+rules in [ARCHITECTURE.md](ARCHITECTURE.md), and strengthened the existing
+asynchronous rollback integration case to assert a proxied use-case bean,
+execution on the managed worker, two saved groups before failure, and cursor
+closure during the processing transaction. Existing assertions verify complete
+rollback, the independently committed failure audit, and successful retry.
+Work used the local read/search/patch tools, Git, Maven 3.9.4, JDK 27 (release 25),
+and PostgreSQL Testcontainers under the existing [agent rules](../AGENTS.md).
+
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed the full reactor,
+including all 41 PostgreSQL integration cases without failures, errors or skips.
+The strengthened `StreamingBalanceUpdateIT` suite passed all 17 cases.
+`git diff --check` also passed.
+
 ## Assignment comparison documentation — 2026-10-23
 
 OpenCode (`openai/gpt-6.1-sol`) compared the root assignment, starter Java sources

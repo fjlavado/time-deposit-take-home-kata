@@ -59,6 +59,35 @@ The executor is drained before the datasource closes. No automatic active-job
 expiry or replay is introduced. See [background jobs](BACKGROUND_BALANCE_UPDATES.md)
 and [bulk calculation semantics](BATCH_BALANCE_UPDATES.md).
 
+### Transaction proxy and method visibility
+
+The worker's private `BackgroundBalanceUpdateJob.run()` calls the injected
+`UpdateDepositBalancesUseCase` bean. Spring intercepts the separate decorator's
+public, non-final `@Transactional updateBalances()` method and opens the processing
+transaction on that worker thread. The decorator is registered by
+`UseCaseConfiguration`; its delegate is a plain application service.
+
+`UpdateDepositBalancesService.updateGroup()` remains private: it runs synchronously
+inside the transaction already opened by the decorator. Method visibility does
+not prevent participation in an existing transaction. Every group's reads and
+saves, including the final ID-stream closure, share that transaction.
+
+With Spring's proxy-based transaction management, annotating a private helper
+cannot create a transaction boundary. Making a helper public alone is also
+insufficient: self-invocation within the same object bypasses the proxy. Keep the
+transaction entry point on the separate injected decorator. A manually constructed
+decorator used outside Spring does not apply its annotation automatically.
+
+The private job helpers `run()` and `finish()` do not establish annotation-driven
+transactions. Audit calls go through `TransactionalBalanceUpdateExecutionRepository`,
+which opens explicit `TransactionTemplate` transactions independently of proxy
+interception. The request transaction is not propagated into the executor.
+
+`StreamingBalanceUpdateIT.asynchronousFailureRollsBackAllGroupsRecordsFailedAndAllowsANewHttpRun`
+checks the actual proxied bean, worker execution, two saved groups, stream closure
+inside the transaction, rollback of both groups, independently committed failure
+audit, and a successful subsequent HTTP-triggered execution.
+
 ## Retrieval
 
 Web dispatches `RetrieveTimeDepositsQuery` through the inbound query bus. Its

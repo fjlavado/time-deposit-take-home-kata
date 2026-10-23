@@ -3,7 +3,10 @@ package org.ikigaidigital.infrastructure.transaction;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Transaction begins before loading aggregates and commits only after every save group succeeds. */
+/**
+ * Spring-managed proxy entry point: callers must invoke this public method through the injected bean.
+ * The transaction covers the delegate's private helpers and commits only after every save group succeeds.
+ */
 public class TransactionalUpdateDepositBalancesUseCase implements UpdateDepositBalancesUseCase {
     private final UpdateDepositBalancesUseCase delegate;
 

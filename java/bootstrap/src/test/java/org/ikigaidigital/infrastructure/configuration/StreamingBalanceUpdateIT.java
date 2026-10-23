@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -46,6 +47,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -413,11 +415,20 @@ class StreamingBalanceUpdateIT {
         insertBasic(205);
         insertWithdrawals();
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
+        var callerThread = Thread.currentThread();
+        var processingThread = new AtomicReference<Thread>();
+        observed.onFirstLoad = () -> processingThread.set(Thread.currentThread());
         observed.failOnWrite = true;
+        assertThat(AopUtils.isAopProxy(useCase)).isTrue();
 
         var failed = postUpdate();
         assertThat(failed.statusCode()).isEqualTo(202);
         awaitExecution(executionId(failed), "FAILED");
+        assertThat(processingThread.get()).isNotNull().isNotSameAs(callerThread);
+        assertThat(processingThread.get().getName()).startsWith("balance-update-");
+        assertThat(observed.loadedGroupSizes).containsExactly(100, 100);
+        assertThat(observed.savedGroupSizes).containsExactly(100, 100);
+        assertThat(observed.closedDuringTransaction).hasValue(1);
         assertUnchanged();
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
         await().atMost(Duration.ofSeconds(5)).untilAsserted(this::assertReleased);
