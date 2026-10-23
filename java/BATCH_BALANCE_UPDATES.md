@@ -55,6 +55,24 @@ Run `mvn test` and `mvn verify` from `java/`; integration tests require Docker a
 PostgreSQL `17.6-alpine` through Testcontainers. Existing build and Swagger instructions
 in [README.md](README.md) apply. OpenAPI 3.0.0 describes both operations and HTTP 409.
 
+Verification on 2026-10-23 used JDK 27 with Maven's release-25 target:
+`mvn -q test` passed during implementation and final `mvn -q verify` passed
+**164 non-integration cases and 26 PostgreSQL integration cases**, with no failures,
+errors, or skips. Coverage includes:
+
+- Every plan's incremental periods, eligibility boundaries, missed-period catch-up,
+  Student expiry, rounding compatibility, and idempotency of balances/state/versions.
+- 10,005 deposits with withdrawals, one observed PostgreSQL server-side cursor
+  (`pg_cursors`), driver fetch size 100, autocommit off, and 101 real JDBC batches.
+- Explicit result-set/statement closure on success, read failure, write failure, and
+  optimistic conflict. Repeated calls with a two-connection Hikari pool end with zero
+  active connections; stream close occurs before transaction completion.
+- Two HTTP requests synchronized before their first writes return exactly one 204
+  and one 409. A retry is a no-op, and only the winning versions/balances persist.
+- Whole-transaction rollback on later-batch failure or a stale row inside a batch,
+  Spring Data aggregate version checks, rejection of unverifiable JDBC row counts,
+  and migration of a populated V1 schema without losing withdrawals or their index.
+
 This work used OpenCode with `openai/gpt-6.1-sol` and the repository's `AGENTS.md`.
 AI-assisted work covered migration, schedule state, ports, streaming orchestration,
 JDBC mapping/batch locking, REST wiring, and behavioral tests. The user explicitly

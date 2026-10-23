@@ -47,13 +47,18 @@ public final class TimeDepositRepositoryAdapter implements TimeDepositRepository
             statement.setInt(3, deposit.getId());
             statement.setLong(4, deposit.getVersion());
         });
+        int confirmed = 0;
         for (var group : counts) {
             for (int count : group) {
                 // Fail closed if a driver cannot confirm a single updated row.
                 if (count != 1) {
                     throw new OptimisticLockingFailureException("Stale time deposit in balance update batch");
                 }
+                confirmed++;
             }
+        }
+        if (confirmed != batch.size()) {
+            throw new OptimisticLockingFailureException("Incomplete row counts for balance update batch");
         }
     }
 }
