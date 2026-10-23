@@ -1,19 +1,43 @@
 package org.ikigaidigital.infrastructure.configuration;
 
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.infrastructure.persistence.JdbcTimeDepositRepository;
+import org.ikigaidigital.infrastructure.persistence.TimeDepositRepositoryAdapter;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;
+import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositBalanceJdbcRepository;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jdbc.repository.config.EnableJdbcRepositories;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+
+import javax.sql.DataSource;
 
 @Configuration(proxyBeanMethods = false)
-@EnableJdbcRepositories(basePackageClasses = TimeDepositJdbcRepository.class)
+@EnableJdbcRepositories(basePackageClasses = TimeDepositJdbcRepository.class,
+        jdbcOperationsRef = "depositJdbcOperations")
 public class PersistenceAdapterConfiguration {
+    @Bean
+    NamedParameterJdbcTemplate depositJdbcOperations(DataSource dataSource) {
+        var template = new JdbcTemplate(dataSource);
+        // PostgreSQL uses a server-side cursor only with a positive fetch size
+        // AND autocommit disabled by the encompassing use-case transaction.
+        template.setFetchSize(100);
+        return new NamedParameterJdbcTemplate(template);
+    }
+
+    @Bean
+    TimeDepositRepositoryPort balanceUpdateRepository(TimeDepositBalanceJdbcRepository deposits,
+                                                      TimeDepositPersistenceMapper mapper,
+                                                      NamedParameterJdbcTemplate depositJdbcOperations) {
+        return new TimeDepositRepositoryAdapter(deposits, mapper, depositJdbcOperations.getJdbcOperations());
+    }
+
     @Bean
     static BeanPostProcessor singleQueryLoading() {
         return new BeanPostProcessor() {

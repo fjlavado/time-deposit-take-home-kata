@@ -13,6 +13,7 @@ public final class TimeDepositPersistenceMapper {
         // Decimal storage meets compatible double arithmetic only at this adapter boundary.
         return new TimeDeposit(deposit.id(), new PlanType(deposit.planType()), deposit.balance().doubleValue(), deposit.days(),
                 deposit.withdrawals().stream().sorted(Comparator.comparing(WithdrawalTable::id))
-                        .map(row -> new Withdrawal(row.id(), row.amount(), row.date())).toList());
+                        .map(row -> new Withdrawal(row.id(), row.amount(), row.date())).toList(),
+                deposit.lastProcessedDays(), deposit.version());
     }
 }

@@ -1,6 +1,7 @@
 package org.ikigaidigital.infrastructure.persistence.jdbc;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.MappedCollection;
 import org.springframework.data.relational.core.mapping.Table;
@@ -12,6 +13,8 @@ import java.util.Set;
 @Table("timeDeposits")
 public record TimeDepositTable(@Id Integer id, @Column("planType") String planType,
                                BigDecimal balance, int days,
+                               @Column("last_processed_days") int lastProcessedDays,
+                               @Version Long version,
                                @MappedCollection(idColumn = "timeDepositId") Set<WithdrawalTable> withdrawals) {
     public TimeDepositTable {
         // Single-query loading can supply null for an aggregate with no child rows.
