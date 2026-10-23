@@ -257,3 +257,19 @@ Build verification then passed `mvn -B clean test` and
 158 non-integration cases and 14 PostgreSQL integration cases, without failures,
 errors, or skips. The README, implementation tracker, and agent rules document
 pagination, inherited repository usage, query bounds, and transaction behavior.
+
+## Atomic typed-plan checkpoint — 2026-10-23
+
+The user requested analysis and meaningful atomic commits, then approved the plan.
+OpenCode with `openai/gpt-6.1-sol` used Git inspection and `apply_patch` to separate
+the typed-plan/sealed-singleton migration from the decimal half-cent behavior change
+and obsolete IDE metadata removal. Each code checkpoint is exported from the Git
+index for independent verification, so unrelated working-tree changes cannot mask
+an incomplete commit. The refactor checkpoint retains binary half-cent rounding,
+migrates callers and exact-string boundary mappings, and updates architecture rules.
+The README example now uses relocated imports, singleton instances, and `apply()`.
+
+From the exported refactor checkpoint, `mvn test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27 with release 25:
+**153 non-integration cases** (127 in domain) and **14 PostgreSQL integration cases**,
+with no failures, errors, or skips. Application packaging also succeeded.

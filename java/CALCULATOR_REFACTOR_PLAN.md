@@ -2,9 +2,26 @@
 
 ## Scope and compatibility
 
-Refactor `domain/src/main/java/org/ikigaidigital/TimeDepositCalculator.java` and its
-associated tests, now built by the `domain` module. This is the separately requested
-starter-code refactor deferred by the earlier backend plans.
+The original refactor is complete; its historical results and commit checkpoints are
+recorded below. Current sources are `domain/src/main/java/org/ikigaidigital/services/TimeDepositCalculator.java`
+and `domain/src/main/java/org/ikigaidigital/domain/interest/TimeDeposit.java`.
+
+### Supplied typed/sealed refactor — 2026-10-23
+
+The subsequent user changes introduce `PlanType` constructor/getter values, move
+`Balance` into `domain.interest.vo` with a `value()` accessor, seal `InterestStrategy`
+to the four built-in implementations, add strategy `planType()` declarations, and key
+resolver registries by `PlanType`. Strategies use private constructors, public
+instances, and `apply(TimeDeposit)` eligibility/fallback.
+
+Tests use typed fixtures and permitted strategy aliases/overrides rather than custom
+lambdas, retain binary half-cent expectations, and include the relocated calculator
+in architecture checks. HTTP and database plan names remain exact strings.
+See `AI_WORKFLOW.md` for independent staged checkpoint verification.
+Earlier results below apply to their historical snapshots; the original design below
+describes the pre-sealed, pre-`PlanType` API. See [README.md](README.md) for the current API.
+
+### Original scope and compatibility
 
 Preserve the `TimeDeposit` public API, public no-argument calculator construction,
 `public void updateBalance(List<TimeDeposit> xs)`, and in-place balance updates.

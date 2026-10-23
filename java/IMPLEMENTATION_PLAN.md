@@ -13,6 +13,13 @@ Subsequent CRUD/pagination work keeps Spring Data in persistence, replaces unbou
 domain reads with `search(PageRequest)`, exposes paginated GET, and updates balances
 page by page within one transaction.
 
+Current supplied refactor: the deposit moved to `domain.interest.TimeDeposit`, the calculator
+to `services.TimeDepositCalculator`, and plan/balance values to `domain.interest.vo`.
+Strategies are sealed singleton instances with declared `PlanType` keys and
+`apply(TimeDeposit)` eligibility/fallback. Tests and boundary mappers follow these
+changes while preserving binary half-cent rounding. See `AI_WORKFLOW.md` for staged
+checkpoint verification; earlier logs remain historical.
+
 ## Implementation commits
 
 The user explicitly requested commits after implementation. Each checkpoint below was verified from an exported Git index snapshot, containing only files staged for that commit, before committing.
@@ -43,14 +50,14 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 | Module | Project dependencies | Responsibility |
 | --- | --- | --- |
-| `domain` | None | Single compatible deposit model/calculator, immutable withdrawal/balance values, interest strategies, outbound repository port |
+| `domain` | None | Single deposit model/calculator service, immutable plan/balance/withdrawal values, sealed interest strategies, outbound repository port |
 | `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | `domain` | Spring Data JDBC table records/repositories, domain adapter/mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 
-Domain and application production code must not depend on frameworks. Application and adapters use the shared `org.ikigaidigital.TimeDeposit` model; the update handler invokes the compatible calculator directly before saving balances. Strategy details remain encapsulated in domain.
+Domain and application production code must not depend on frameworks. Application and adapters use the shared `org.ikigaidigital.domain.interest.TimeDeposit` model; the update handler invokes `org.ikigaidigital.services.TimeDepositCalculator` directly before saving balances. Strategy details remain encapsulated in domain. Plan arguments/getters use `PlanType`; HTTP and database names remain strings.
 
 ## Steps
 
@@ -62,9 +69,9 @@ Domain and application production code must not depend on frameworks. Applicatio
 
 ### 2. Domain — `feat(domain): model deposits and monthly interest rules`
 
-- [x] Model deposits and withdrawals. Subsequently simplified to the original compatible mutable `TimeDeposit`, with read-only withdrawals and string plan types; removed the duplicate immutable deposit and plan wrapper.
+- [x] Model deposits and withdrawals. Subsequently consolidated to one mutable `TimeDeposit` with read-only withdrawals; the latest supplied refactor introduces `PlanType` values rather than raw string plan arguments.
 - [x] Separate interest eligibility/rates from application orchestration.
-- [x] Preserve established arithmetic: double interest, `new BigDecimal(interest)`, HALF_UP to two decimals, then double addition without rounding the final balance.
+- [x] Preserve established arithmetic: double interest, `new BigDecimal(interest)`, HALF_UP, then double addition without final rounding.
 - [x] Cover basic (`days > 30`, 1%/12), student (`30 < days < 366`, 3%/12), premium (`days > 45`, 5%/12), unknown plans, rounding, and repeated updates.
 - [x] Do not change age or deduct withdrawals.
 
@@ -116,8 +123,8 @@ Domain and application production code must not depend on frameworks. Applicatio
 
 - [x] Separately plan and implement calculator Strategy extraction and behavioral
   coverage in [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md).
-- The shared starter model now encapsulates an immutable balance value while
-  preserving its public API; the backend retains its independent model.
+- The single shared model encapsulates an immutable balance value. The latest
+  package/typed-plan changes require caller migration; see the current README.
 
 ## Spring Data JDBC migration — 2026-10-23
 

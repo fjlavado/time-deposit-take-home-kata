@@ -1,7 +1,7 @@
 package org.ikigaidigital.infrastructure.configuration;
 
-import org.ikigaidigital.TimeDeposit;
-import org.ikigaidigital.TimeDepositCalculator;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.services.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
 import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;

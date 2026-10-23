@@ -13,9 +13,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
 class HexagonalArchitectureTest {
-    // The original public packages now belong to domain; retain their names for API compatibility.
+    // Models, strategies, and the calculator service are all part of the framework-free domain module.
     private static final String[] DOMAIN_PACKAGES = {
-            "org.ikigaidigital.domain..", "org.ikigaidigital", "org.ikigaidigital.interest.."
+            "org.ikigaidigital.domain..", "org.ikigaidigital.services..", "org.ikigaidigital.interest.."
     };
     private static final JavaClasses BACKEND = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -26,7 +26,7 @@ class HexagonalArchitectureTest {
         classes().that().resideInAnyPackage(DOMAIN_PACKAGES)
                 .should().onlyDependOnClassesThat()
                 .resideInAnyPackage("java..", "org.ikigaidigital.domain..",
-                        "org.ikigaidigital", "org.ikigaidigital.interest..")
+                        "org.ikigaidigital.services..", "org.ikigaidigital.interest..")
                 .check(BACKEND);
     }
 
@@ -34,7 +34,7 @@ class HexagonalArchitectureTest {
     void applicationDependsOnlyOnJavaDomainAndItself() {
         classes().that().resideInAPackage("org.ikigaidigital.application..")
                 .should().onlyDependOnClassesThat()
-                .resideInAnyPackage("java..", "org.ikigaidigital.domain..", "org.ikigaidigital",
+                .resideInAnyPackage("java..", "org.ikigaidigital.domain..", "org.ikigaidigital.services..",
                         "org.ikigaidigital.application..")
                 .check(BACKEND);
     }
@@ -69,7 +69,7 @@ class HexagonalArchitectureTest {
                 .check(BACKEND);
         noClasses().that().resideInAPackage("org.ikigaidigital.infrastructure.web..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "org.ikigaidigital.domain.port..", "org.ikigaidigital.domain.interest..")
+                        "org.ikigaidigital.domain.port..", "org.ikigaidigital.services..")
                 .check(BACKEND);
     }
 

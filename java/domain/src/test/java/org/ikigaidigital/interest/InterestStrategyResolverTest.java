@@ -1,6 +1,9 @@
 package org.ikigaidigital.interest;
 
-import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
+import org.ikigaidigital.services.interest.InterestStrategy;
+import org.ikigaidigital.services.interest.InterestStrategyResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -13,26 +16,28 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.ikigaidigital.services.interest.BasicInterestStrategy.BASIC_INTEREST_STRATEGY;
+import static org.ikigaidigital.services.interest.NoInterestStrategy.NO_INTEREST_STRATEGY;
+import static org.ikigaidigital.services.interest.PremiumInterestStrategy.PREMIUM_INTEREST_STRATEGY;
+import static org.ikigaidigital.services.interest.StudentInterestStrategy.STUDENT_INTEREST_STRATEGY;
 
 class InterestStrategyResolverTest {
     @ParameterizedTest
     @MethodSource("builtInStrategies")
-    void resolvesEligibleBuiltInPlans(String plan, int days, Class<? extends InterestStrategy> expectedType) {
+    void resolvesEligibleBuiltInPlans(String plan, int days, InterestStrategy expected) {
         InterestStrategyResolver resolver = new InterestStrategyResolver();
 
-        assertThat(resolver.resolve(deposit(plan, days))).isInstanceOf(expectedType);
+        assertThat(resolver.resolve(deposit(plan, days))).isSameAs(expected);
     }
 
     @ParameterizedTest
     @CsvSource({
-            "basic, 0", "basic, 29", "basic, 30",
-            "student, 0", "student, 29", "student, 30", "student, 366", "student, 1000",
-            "premium, 0", "premium, 29", "premium, 30", "premium, 31", "premium, 44", "premium, 45"
+            "basic, 30", "student, 30", "student, 366", "premium, 45"
     })
     void resolvesMatchingButIneligiblePlansToNoInterest(String plan, int days) {
         InterestStrategyResolver resolver = new InterestStrategyResolver();
 
-        assertThat(resolver.resolve(deposit(plan, days))).isInstanceOf(NoInterestStrategy.class);
+        assertThat(resolver.resolve(deposit(plan, days))).isSameAs(NO_INTEREST_STRATEGY);
     }
 
     @ParameterizedTest
@@ -40,86 +45,70 @@ class InterestStrategyResolverTest {
     void resolvesUnregisteredPlanNamesToNoInterest(String plan) {
         InterestStrategyResolver resolver = new InterestStrategyResolver();
 
-        assertThat(resolver.resolve(deposit(plan, 46))).isInstanceOf(NoInterestStrategy.class);
+        assertThat(resolver.resolve(deposit(plan, 46))).isSameAs(NO_INTEREST_STRATEGY);
     }
 
     @Test
-    void resolvesCustomRegistrationsAndOverridesToTheSuppliedStrategies() {
-        InterestStrategy custom = deposit -> 10.0;
-        InterestStrategy replacement = deposit -> 42.0;
+    void resolvesAliasesAndOverridesToTheSuppliedPermittedStrategies() {
+        InterestStrategy custom = PREMIUM_INTEREST_STRATEGY;
+        InterestStrategy replacement = NO_INTEREST_STRATEGY;
         InterestStrategyResolver resolver = new InterestStrategyResolver(Map.of(
-                "custom", custom, "basic", replacement
+                new PlanType("custom"), custom, PlanType.BASIC, replacement
         ));
 
         assertThat(resolver.resolve(deposit("custom", 46))).isSameAs(custom);
-        assertThat(resolver.resolve(deposit("basic", 0))).isSameAs(replacement);
-        assertThat(resolver.resolve(deposit("student", 46))).isInstanceOf(NoInterestStrategy.class);
+        assertThat(resolver.resolve(deposit("basic", 31))).isSameAs(replacement);
+        assertThat(resolver.resolve(deposit("student", 46))).isSameAs(NO_INTEREST_STRATEGY);
     }
 
     @ParameterizedTest
-    @CsvSource({"9, 1000, false", "10, 999, false", "10, 1000, true"})
-    void evaluatesCustomEligibilityUsingTheWholeDeposit(int days, double balance, boolean eligible) {
-        TimeDeposit deposit = new TimeDeposit(1, "custom", balance, days);
-        InterestStrategy custom = new InterestStrategy() {
-            @Override
-            public boolean isApplicable(TimeDeposit candidate) {
-                assertThat(candidate).isSameAs(deposit);
-                return candidate.getDays() >= 10 && candidate.getBalance() >= 1000;
-            }
-
-            @Override
-            public double calculateInterest(TimeDeposit candidate) {
-                throw new AssertionError("Resolution must not calculate interest");
-            }
-        };
-        InterestStrategyResolver resolver = new InterestStrategyResolver(Map.of("custom", custom));
+    @CsvSource({"45, false", "46, true"})
+    void evaluatesTheRegisteredStrategyEligibilityWithoutChangingTheDeposit(int days, boolean eligible) {
+        PlanType customPlan = new PlanType("custom");
+        TimeDeposit deposit = new TimeDeposit(1, customPlan, 1000.0, days);
+        InterestStrategy custom = PREMIUM_INTEREST_STRATEGY;
+        InterestStrategyResolver resolver = new InterestStrategyResolver(Map.of(customPlan, custom));
 
         InterestStrategy resolved = resolver.resolve(deposit);
 
-        if (eligible) {
-            assertThat(resolved).isSameAs(custom);
-        } else {
-            assertThat(resolved).isInstanceOf(NoInterestStrategy.class);
-        }
+        assertThat(resolved).isSameAs(eligible ? custom : NO_INTEREST_STRATEGY);
+        assertThat(deposit.getBalance()).isEqualTo(1000.0);
+        assertThat(deposit.getPlanType()).isEqualTo(customPlan);
+        assertThat(deposit.getDays()).isEqualTo(days);
     }
 
     @Test
     void resolvesBuiltInPlansToNoInterestWhenTheRegistryIsEmpty() {
         InterestStrategyResolver resolver = new InterestStrategyResolver(Map.of());
 
-        assertThat(resolver.resolve(deposit("basic", 46))).isInstanceOf(NoInterestStrategy.class);
-        assertThat(resolver.resolve(deposit("student", 46))).isInstanceOf(NoInterestStrategy.class);
-        assertThat(resolver.resolve(deposit("premium", 46))).isInstanceOf(NoInterestStrategy.class);
+        assertThat(resolver.resolve(deposit("basic", 46))).isSameAs(NO_INTEREST_STRATEGY);
+        assertThat(resolver.resolve(deposit("student", 46))).isSameAs(NO_INTEREST_STRATEGY);
+        assertThat(resolver.resolve(deposit("premium", 46))).isSameAs(NO_INTEREST_STRATEGY);
     }
 
     @Test
     void snapshotsTheRegistrySoCallerMutationsDoNotAffectResolution() {
-        InterestStrategy original = deposit -> 1.0;
-        Map<String, InterestStrategy> registry = new HashMap<>();
-        registry.put("custom", original);
+        InterestStrategy original = BASIC_INTEREST_STRATEGY;
+        PlanType customPlan = new PlanType("custom");
+        Map<PlanType, InterestStrategy> registry = new HashMap<>();
+        registry.put(customPlan, original);
         InterestStrategyResolver resolver = new InterestStrategyResolver(registry);
-        registry.put("custom", deposit -> 99.0);
-        registry.put("basic", deposit -> 99.0);
+        registry.put(customPlan, PREMIUM_INTEREST_STRATEGY);
+        registry.put(PlanType.BASIC, PREMIUM_INTEREST_STRATEGY);
 
         assertThat(resolver.resolve(deposit("custom", 46))).isSameAs(original);
-        assertThat(resolver.resolve(deposit("basic", 46))).isInstanceOf(NoInterestStrategy.class);
+        assertThat(resolver.resolve(deposit("basic", 46))).isSameAs(NO_INTEREST_STRATEGY);
     }
 
     private static TimeDeposit deposit(String plan, int days) {
-        return new TimeDeposit(1, plan, 1000.0, days);
+        return new TimeDeposit(1, new PlanType(plan), 1000.0, days);
     }
 
     private static Stream<Arguments> builtInStrategies() {
         return Stream.of(
-                Arguments.of("basic", 31, BasicInterestStrategy.class),
-                Arguments.of("basic", 365, BasicInterestStrategy.class),
-                Arguments.of("basic", 366, BasicInterestStrategy.class),
-                Arguments.of("student", 31, StudentInterestStrategy.class),
-                Arguments.of("student", 364, StudentInterestStrategy.class),
-                Arguments.of("student", 365, StudentInterestStrategy.class),
-                Arguments.of("premium", 46, PremiumInterestStrategy.class),
-                Arguments.of("premium", 365, PremiumInterestStrategy.class),
-                Arguments.of("premium", 366, PremiumInterestStrategy.class)
+                Arguments.of("basic", 31, BASIC_INTEREST_STRATEGY),
+                Arguments.of("student", 31, STUDENT_INTEREST_STRATEGY),
+                Arguments.of("premium", 46, PREMIUM_INTEREST_STRATEGY)
         );
     }
 }

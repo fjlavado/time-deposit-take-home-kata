@@ -1,6 +1,6 @@
 package org.ikigaidigital.infrastructure.persistence;
 
-import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.model.Page;
 import org.ikigaidigital.domain.model.PageRequest;

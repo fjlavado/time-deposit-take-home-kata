@@ -1,6 +1,6 @@
 package org.ikigaidigital.infrastructure.configuration;
 
-import org.ikigaidigital.TimeDepositCalculator;
+import org.ikigaidigital.services.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.bus.DefaultQueryBus;
 import org.ikigaidigital.application.command.handler.CommandHandler;

@@ -5,6 +5,15 @@ moved shared sources/tests from `java/src/` into `java/domain/src/`, removed `le
 and replaced duplicate interest policies with the shared Strategy implementation.
 See [README.md](README.md) for the current module layout.
 
+The 2026-10-23 supplied typed/sealed refactor further moves the model to
+`org.ikigaidigital.domain.interest`, value objects to `domain.interest.vo`, and the
+calculator to `org.ikigaidigital.services`. Architecture tests include services in
+domain, allow application handlers to call the calculator, and allow web mapping of
+the relocated model while retaining the ban on web access to repository ports and
+calculator services. Current test/documentation updates follow that layout.
+See `AI_WORKFLOW.md` for independent staged checkpoint verification. The completed
+steps and passing logs below describe the original refactor snapshot.
+
 ## Goal and constraints
 
 Apply Doodle's synchronous command/query dispatch pattern to this Java backend,

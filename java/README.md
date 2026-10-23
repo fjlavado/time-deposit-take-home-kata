@@ -21,14 +21,14 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 
 | Module | Responsibility |
 | --- | --- |
-| `domain` | Single compatible deposit model, calculator, immutable withdrawal/balance values, extensible interest strategies, repository port; no framework dependencies |
+| `domain` | Single deposit model, calculator service, immutable plan/balance/withdrawal values, sealed interest strategies, repository port; no framework dependencies |
 | `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and mapper, balance-only persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
 | `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
 
-ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and confinement of the compatible mutable calculator API to domain. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
+ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and confinement of strategy details to domain. The domain layer includes `org.ikigaidigital.domain..`, `org.ikigaidigital.interest..`, and `org.ikigaidigital.services..`. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
 
 ### Command and query flow
 
@@ -65,6 +65,12 @@ mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packa
 ```
 
 `*Test` classes run with Surefire; `*IT` classes run with Failsafe. Integration tests require a reachable Docker daemon and pull PostgreSQL `17.6-alpine`. They use isolated databases; no manually started database is required. Tests fail rather than silently skip when Docker is unavailable.
+
+### Current refactor verification status
+
+The typed-plan/sealed-singleton refactor migrates all callers and boundary mappings.
+The staged checkpoint is verified independently of the subsequent decimal-rounding
+change; verification results are recorded in [AI_WORKFLOW.md](AI_WORKFLOW.md).
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -167,9 +173,9 @@ docker run --rm -p 8081:8080 \
 
 Open <http://localhost:8081>, expand either operation, select **Try it out**, then **Execute**. The contract targets `http://localhost:8080`; the backend allows the UI's `http://localhost:8081` origin for these two operations. Adjust the contract's server URL if the application's port changes.
 
-## Interest compatibility and assumptions
+## Interest rules and current domain API
 
-The starter calculator is the behavior baseline, including the division by twelve:
+Eligibility and rates retain the starter's division by twelve:
 
 | Exact plan name | Eligible days | Interest per invocation |
 | --- | --- | --- |
@@ -179,58 +185,65 @@ The starter calculator is the behavior baseline, including the division by twelv
 
 Rates are interpreted as annual percentages credited monthly. Matching is case-sensitive; unknown plan strings are returned unchanged and earn no interest.
 
-Calculation intentionally uses double arithmetic, `new BigDecimal(interest)`, HALF_UP rounding of interest to two places, and double addition. **The final balance is not separately rounded.** For example, two basic credits on 1000 produce `1001.6600000000001`, matching the established behavior. The database uses unconstrained PostgreSQL `NUMERIC` to avoid silently rounding that result; the persistence mapper reads balances with `BigDecimal.doubleValue()`, and balance writes use `BigDecimal.valueOf(deposit.getBalance())`. Withdrawal amounts remain `BigDecimal` throughout.
+Calculation preserves double arithmetic followed by `new BigDecimal(interest)` and
+`setScale(2, RoundingMode.HALF_UP)`, including the established binary half-cent results.
+**The final balance is not separately rounded.** Two basic credits on 1000 still produce
+`1001.6600000000001`. PostgreSQL uses unconstrained `NUMERIC`; the persistence mapper reads
+balances with `BigDecimal.doubleValue()`, and writes use `BigDecimal.valueOf(deposit.getBalance())`.
+Withdrawal amounts remain `BigDecimal` throughout.
 
-New rules implement `InterestStrategy` and are supplied as a complete `Map<String, InterestStrategy>` registry to `TimeDepositCalculator`; the use cases and adapters do not need to change.
+Sources and tests live in `domain/src/`; the separate `legacy` module has been removed.
+The single deposit class is now `org.ikigaidigital.domain.interest.TimeDeposit`, and the
+calculator is `org.ikigaidigital.services.TimeDepositCalculator`. `Balance`, `PlanType`, and
+the generic `ValueObject<T>` interface live in `org.ikigaidigital.domain.interest.vo`.
+Value objects expose `value()`. `PlanType` rejects null names and preserves the exact
+string, including unknown names, capitalization, and whitespace; record equality enables
+lookup using independently constructed equal values. Constants are `BASIC`, `STUDENT`,
+`PREMIUM`, and `UNKNOWN` (the empty name).
 
-The compatible starter API and its tests now live in `domain/src/`; the separate
-`legacy` module has been removed. Original package names are retained to preserve
-source compatibility. `org.ikigaidigital.TimeDeposit` is the single deposit model
-used by the calculator, application, and adapters. Its four-argument constructor
-defaults to no withdrawals; an additional constructor accepts a defensively copied,
-read-only withdrawals list exposed by `getWithdrawals()`. Plan types remain exact
-strings, including unknown future values. The update handler passes the loaded
-deposits directly to `TimeDepositCalculator.updateBalance` and saves their balances
-in the same transaction. Interest updates mutate only balances in place, preserving
-metadata and withdrawals. The duplicate backend deposit, `PlanType` wrapper, and
-`MonthlyInterestCalculator` conversion layer have been removed.
-The shared calculator delegates to `InterestStrategy` implementations for basic, student, and premium
-plans. `new TimeDepositCalculator()` retains all existing plans; the additional
-constructor accepts a complete `Map<String, InterestStrategy>` registry to register
-custom plans or replace existing rules. `InterestStrategyResolver.resolve(deposit)`
-selects the strategy, returning `NoInterestStrategy` for unregistered plans or when
-the matching strategy's `isApplicable(deposit)` assertion fails. The calculator
-always delegates without a conditional fallback. The resolver defensively copies
-the registry, each strategy owns its eligibility assertion, and the shared
-`InterestStrategy.calculateInterestRounded` helper centralizes compatible rounding.
-Unconstrained functional strategies apply by
-default; override `isApplicable` to define eligibility.
-For example, a custom-only registry can be supplied as:
+Both deposit constructors now accept `PlanType`, and `getPlanType()` returns it. The
+four-argument constructor defaults to no withdrawals; the five-argument constructor
+defensively copies a read-only withdrawals list. These package and plan-type changes
+require callers to migrate imports and string arguments. HTTP and database plan fields
+remain strings; the web mapper unwraps `planType.value()`, and the persistence mapper
+wraps stored names in `PlanType` when constructing domain deposits.
+
+`InterestStrategy` is sealed, permitting only `BasicInterestStrategy`,
+`StudentInterestStrategy`, `PremiumInterestStrategy`, and `NoInterestStrategy`. Each
+declares its `planType()`. The default resolver builds its registry from those declarations
+for the three interest-bearing plans. It returns `NoInterestStrategy` when a plan is
+unregistered or the registered strategy's `apply(deposit)` returns the no-interest
+singleton. Each interest-bearing strategy returns its singleton when eligible;
+the default `apply` implementation returns the no-interest singleton.
+
+The resolver's and calculator's map constructors accept a complete `Map<PlanType, InterestStrategy>`
+registry, which the resolver defensively copies. Existing permitted strategies can be registered
+under aliases or used to override a plan. Arbitrary lambdas and anonymous implementations
+are no longer supported; adding a new strategy requires updating the sealed permits list.
+For example, this resolver uses the premium rule for an alias without adding built-in plans:
 
 ```java
-InterestStrategy loyalty = new InterestStrategy() {
-    @Override
-    public boolean isApplicable(TimeDeposit deposit) {
-        return deposit.getDays() > 60;
-    }
+import java.util.Map;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
+import org.ikigaidigital.services.interest.InterestStrategyResolver;
+import org.ikigaidigital.services.interest.PremiumInterestStrategy;
 
-    @Override
-    public double calculateInterest(TimeDeposit deposit) {
-        return deposit.getBalance() * 0.06 / 12;
-    }
-};
-var calculator = new TimeDepositCalculator(Map.of("loyalty", loyalty));
+var loyalty = new PlanType("loyalty");
+var resolver = new InterestStrategyResolver(Map.of(loyalty, PremiumInterestStrategy.PREMIUM_INTEREST_STRATEGY));
+var deposit = new TimeDeposit(1, loyalty, 1000.0, 46);
+double interest = resolver.resolve(deposit).calculateInterestRounded(deposit); // 4.17
 ```
 
-Include the built-in strategy registrations in that map when those plans are also
-needed. The shared `TimeDeposit` constructor, getters, replacement setter, and the
-calculator's `updateBalance` signature remain compatible. `TimeDeposit` now holds
-an immutable `Balance` value object and encapsulates interest credits through
-`deposit.updateBalance(interest)`. `Balance.addInterest` returns a new value; the
-deposit replaces its balance in place. Interest is already rounded by the strategy
-helper, and neither the value object nor the deposit rounds the final balance.
-The placeholder test has been replaced with 60 characterization cases; additional
-cases cover strategies, resolution, extension, balance values, deposit updates, and withdrawal immutability. See
+The update handler passes loaded deposits directly to the calculator and saves their
+balances within the same transaction. The no-argument calculator retains the three
+built-in rules and `updateBalance(List<TimeDeposit>)` mutates balances in place.
+`Double getBalance()` and `setBalance(Double)` retain their balance API. The deposit
+encapsulates immutable `Balance` values and credits already-rounded interest via
+`deposit.updateBalance(interest)`; `Balance.addInterest` returns a new value.
+Metadata and withdrawals are preserved. The 60 calculator cases retain the established
+rounding behavior; additional cases cover permitted strategies, typed registration and
+resolution, plan/balance values, deposit updates, and withdrawal immutability. See
 [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.
 
 ## Flyway schema evolution

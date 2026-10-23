@@ -1,7 +1,8 @@
 package org.ikigaidigital.application;
 
-import org.ikigaidigital.TimeDeposit;
-import org.ikigaidigital.TimeDepositCalculator;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
+import org.ikigaidigital.services.TimeDepositCalculator;
 import org.ikigaidigital.application.bus.DefaultCommandBus;
 import org.ikigaidigital.application.bus.DefaultQueryBus;
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
@@ -110,11 +111,11 @@ class TimeDepositHandlersTest {
     }
 
     private static TimeDeposit deposit(int id, String plan, int days) {
-        return new TimeDeposit(id, plan, 1000.0, days,
+        return new TimeDeposit(id, new PlanType(plan), 1000.0, days,
                 List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
     }
 
-    private record DepositMetadata(int id, String planType, int days, List<Withdrawal> withdrawals) {
+    private record DepositMetadata(int id, PlanType planType, int days, List<Withdrawal> withdrawals) {
         static DepositMetadata snapshot(TimeDeposit deposit) {
             return new DepositMetadata(deposit.getId(), deposit.getPlanType(), deposit.getDays(),
                     List.copyOf(deposit.getWithdrawals()));

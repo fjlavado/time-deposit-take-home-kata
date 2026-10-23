@@ -1,7 +1,7 @@
 package org.ikigaidigital.application.command.handler;
 
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
-import org.ikigaidigital.TimeDepositCalculator;
+import org.ikigaidigital.services.TimeDepositCalculator;
 import org.ikigaidigital.domain.model.PageRequest;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 

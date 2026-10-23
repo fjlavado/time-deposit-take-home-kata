@@ -1,5 +1,6 @@
 package org.ikigaidigital;
 
+import org.ikigaidigital.domain.interest.vo.Balance;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -23,8 +24,8 @@ class BalanceTest {
 
         Balance credited = original.addInterest(0.83);
 
-        assertThat(original.amount()).isEqualTo(1000.0);
-        assertThat(credited.amount()).isEqualTo(1000.83);
+        assertThat(original.value()).isEqualTo(1000.0);
+        assertThat(credited.value()).isEqualTo(1000.83);
         assertThat(credited).isNotSameAs(original);
     }
 
@@ -36,6 +37,6 @@ class BalanceTest {
             "1200000000, 1000000, 1201000000"
     })
     void addsInterestWithoutRoundingOrChangingDoubleArithmetic(double amount, double interest, double expected) {
-        assertThat(new Balance(amount).addInterest(interest).amount()).isEqualTo(expected);
+        assertThat(new Balance(amount).addInterest(interest).value()).isEqualTo(expected);
     }
 }

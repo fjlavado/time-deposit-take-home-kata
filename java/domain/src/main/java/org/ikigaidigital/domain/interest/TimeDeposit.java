@@ -1,21 +1,23 @@
-package org.ikigaidigital;
+package org.ikigaidigital.domain.interest;
 
+import org.ikigaidigital.domain.interest.vo.Balance;
+import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.model.Withdrawal;
 
 import java.util.List;
 
 public class TimeDeposit {
     private final int id;
-    private final String planType;
+    private final PlanType planType;
     private Balance balance;
     private final int days;
     private final List<Withdrawal> withdrawals;
 
-    public TimeDeposit(int id, String planType, Double balance, int days) {
+    public TimeDeposit(int id, PlanType planType, Double balance, int days) {
         this(id, planType, balance, days, List.of());
     }
 
-    public TimeDeposit(int id, String planType, Double balance, int days, List<Withdrawal> withdrawals) {
+    public TimeDeposit(int id, PlanType planType, Double balance, int days, List<Withdrawal> withdrawals) {
         this.id = id;
         this.planType = planType;
         this.balance = new Balance(balance);
@@ -25,12 +27,12 @@ public class TimeDeposit {
 
     public int getId() { return id; }
 
-    public String getPlanType() {
+    public PlanType getPlanType() {
         return planType;
     }
 
     public Double getBalance() {
-        return balance.amount();
+        return balance.value();
     }
 
     public int getDays() {

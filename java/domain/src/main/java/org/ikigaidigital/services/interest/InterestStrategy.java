@@ -1,15 +1,17 @@
-package org.ikigaidigital.interest;
+package org.ikigaidigital.services.interest;
 
-import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-@FunctionalInterface
-public interface InterestStrategy {
-    /** Eligibility assertion checked by the resolver; unconstrained strategies apply by default. */
-    default boolean isApplicable(TimeDeposit deposit) {
-        return true;
+public sealed interface InterestStrategy permits NoInterestStrategy, PremiumInterestStrategy, StudentInterestStrategy, BasicInterestStrategy {
+
+    PlanType planType();
+    /** Returns the eligible strategy, defaulting to the no-interest singleton. */
+    default InterestStrategy apply(TimeDeposit deposit) {
+        return NoInterestStrategy.NO_INTEREST_STRATEGY;
     }
 
     /** Returns monthly interest rounded to cents without mutating the eligible deposit. */

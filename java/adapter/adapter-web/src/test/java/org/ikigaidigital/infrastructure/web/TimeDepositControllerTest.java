@@ -5,7 +5,8 @@ import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
-import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.domain.model.Page;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
@@ -14,6 +15,8 @@ import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;
 import org.ikigaidigital.infrastructure.web.mapper.TimeDepositApiMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
@@ -48,7 +51,7 @@ class TimeDepositControllerTest {
 
     @Test
     void retrievesExactResponseFieldsAndWithdrawalRepresentation() throws Exception {
-        var deposit = new TimeDeposit(1, "basic", 1000.0, 31,
+        var deposit = new TimeDeposit(1, PlanType.BASIC, 1000.0, 31,
                 List.of(new Withdrawal(2, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
         when(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20)))
                 .thenReturn(new Page<>(List.of(deposit), 0, 20, 1));
@@ -85,6 +88,19 @@ class TimeDepositControllerTest {
 
         verify(commands, times(2)).dispatch(new UpdateTimeDepositBalancesCommand());
         mvc.perform(get("/time-deposits")).andExpect(jsonPath("$.content").isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"student", "premium", "FuturePlan", "", " basic"})
+    void exposesPlanTypeAsItsExactStringValue(String plan) throws Exception {
+        var deposit = new TimeDeposit(1, new PlanType(plan), 1000.0, 46);
+        when(queries.dispatch(new RetrieveTimeDepositsQuery(0, 20)))
+                .thenReturn(new Page<>(List.of(deposit), 0, 20, 1));
+        var mvc = MockMvcBuilders.standaloneSetup(controller()).build();
+
+        mvc.perform(get("/time-deposits"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].planType").value(plan));
     }
 
     @Test

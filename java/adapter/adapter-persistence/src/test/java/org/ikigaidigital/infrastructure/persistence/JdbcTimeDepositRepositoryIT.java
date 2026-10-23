@@ -2,7 +2,8 @@ package org.ikigaidigital.infrastructure.persistence;
 
 import org.flywaydb.core.Flyway;
 import org.aopalliance.intercept.MethodInterceptor;
-import org.ikigaidigital.TimeDeposit;
+import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.model.PageRequest;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
@@ -167,14 +168,14 @@ class JdbcTimeDepositRepositoryIT {
                 .isEqualTo(2);
         assertThat(page.totalElements()).isEqualTo(3);
         assertThat(deposits).extracting(TimeDeposit::getId).containsExactly(1, 2, 3);
-        assertThat(deposits.getFirst().getPlanType()).isEqualTo("basic");
+        assertThat(deposits.getFirst().getPlanType()).isEqualTo(PlanType.BASIC);
         assertThat(deposits.getFirst().getDays()).isEqualTo(31);
         assertThat(deposits.getFirst().getBalance()).isEqualTo(123.456);
         assertThat(deposits.getFirst().getWithdrawals()).extracting(withdrawal -> withdrawal.id())
                 .containsExactly(11, 12);
         assertThat(deposits.getFirst().getWithdrawals().getFirst().amount()).isEqualByComparingTo("12.3456");
         assertThat(deposits.getFirst().getWithdrawals().getFirst().date()).isEqualTo(LocalDate.of(2026, 1, 2));
-        assertThat(deposits.get(1).getPlanType()).isEqualTo("FuturePlan");
+        assertThat(deposits.get(1).getPlanType()).isEqualTo(new PlanType("FuturePlan"));
         assertThat(deposits.get(1).getWithdrawals()).singleElement().satisfies(withdrawal -> {
             assertThat(withdrawal.id()).isEqualTo(13);
             assertThat(withdrawal.amount()).isEqualByComparingTo("7.89");
@@ -229,12 +230,12 @@ class JdbcTimeDepositRepositoryIT {
         transaction.executeWithoutResult(status -> {
             repository.lockForBalanceUpdate();
             // Deliberately different metadata verifies that persistence changes balances only.
-            repository.saveBalances(List.of(new TimeDeposit(1, "premium", balance, 99, List.of())));
+            repository.saveBalances(List.of(new TimeDeposit(1, PlanType.PREMIUM, balance, 99, List.of())));
         });
 
         var actual = repository.search(new PageRequest(0, 20)).content().getFirst();
         assertThat(actual.getBalance()).isEqualTo(balance);
-        assertThat(actual.getPlanType()).isEqualTo("basic");
+        assertThat(actual.getPlanType()).isEqualTo(PlanType.BASIC);
         assertThat(actual.getDays()).isEqualTo(31);
         assertThat(actual.getWithdrawals()).singleElement().satisfies(withdrawal -> {
             assertThat(withdrawal.id()).isEqualTo(11);
