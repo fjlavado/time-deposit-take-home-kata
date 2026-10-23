@@ -28,17 +28,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -53,7 +50,6 @@ class JdbcTimeDepositRepositoryIT {
 
     private static Flyway flyway;
     private static JdbcTemplate jdbc;
-    private static TransactionTemplate transaction;
     private static AnnotationConfigApplicationContext context;
     private static final AtomicInteger READ_QUERIES = new AtomicInteger();
     private JdbcTimeDepositRepository repository;
@@ -74,7 +70,6 @@ class JdbcTimeDepositRepositoryIT {
         flyway = Flyway.configure().dataSource(dataSource).load();
         flyway.migrate();
         jdbc = new JdbcTemplate(dataSource);
-        transaction = new TransactionTemplate(new JdbcTransactionManager(dataSource));
         context = new AnnotationConfigApplicationContext();
         context.registerBean(DataSource.class, () -> dataSource);
         context.register(JdbcConfiguration.class);
@@ -140,11 +135,6 @@ class JdbcTimeDepositRepositoryIT {
         assertThat(page.content()).isEmpty();
         assertThat(page.totalElements()).isZero();
         assertThat(READ_QUERIES.get()).isEqualTo(1);
-        transaction.executeWithoutResult(status -> {
-            repository.lockForBalanceUpdate();
-            assertThat(repository.search(new PageRequestVO(0, 20)).content()).isEmpty();
-            repository.saveBalances(List.of());
-        });
     }
 
     @Test
@@ -206,44 +196,20 @@ class JdbcTimeDepositRepositoryIT {
                 .containsExactly(11, 12);
         assertThat(first.totalElements()).isEqualTo(3);
         assertThat(first.totalPages()).isEqualTo(2);
-        assertThat(first.hasNext()).isTrue();
+        assertThat(first.page()).isZero();
+        assertThat(first.size()).isEqualTo(2);
 
         var last = repository.search(new PageRequestVO(1, 2));
         assertThat(last.content()).extracting(TimeDeposit::getId).containsExactly(3);
         assertThat(last.page()).isEqualTo(1);
         assertThat(last.size()).isEqualTo(2);
         assertThat(last.totalElements()).isEqualTo(3);
-        assertThat(last.hasNext()).isFalse();
+        assertThat(last.totalPages()).isEqualTo(2);
 
         var beyond = repository.search(new PageRequestVO(2, 2));
         assertThat(beyond.content()).isEmpty();
         assertThat(beyond.totalElements()).isEqualTo(3);
         assertThat(beyond.totalPages()).isEqualTo(2);
-    }
-
-    @Test
-    void savesOnlyBalancesWithoutRoundingTheResultOrOverwritingOtherFields() {
-        jdbc.execute("INSERT INTO \"timeDeposits\" (id, \"planType\", balance, days) VALUES (1, 'basic', 12.345, 31)");
-        jdbc.execute("INSERT INTO withdrawals (id, \"timeDepositId\", amount, date) VALUES (11, 1, 2.50, DATE '2026-01-02')");
-        double balance = 12.345 + 0.01;
-
-        transaction.executeWithoutResult(status -> {
-            repository.lockForBalanceUpdate();
-            // Deliberately different metadata verifies that persistence changes balances only.
-            repository.saveBalances(List.of(new TimeDeposit(1, PlanType.PREMIUM, balance, 99, List.of())));
-        });
-
-        var actual = repository.search(new PageRequestVO(0, 20)).content().getFirst();
-        assertThat(actual.getBalance()).isEqualTo(balance);
-        assertThat(actual.getPlanType()).isEqualTo(PlanType.BASIC);
-        assertThat(actual.getDays()).isEqualTo(31);
-        assertThat(actual.getWithdrawals()).singleElement().satisfies(withdrawal -> {
-            assertThat(withdrawal.id()).isEqualTo(11);
-            assertThat(withdrawal.amount()).isEqualByComparingTo("2.50");
-            assertThat(withdrawal.date()).isEqualTo(LocalDate.of(2026, 1, 2));
-        });
-        assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 1", BigDecimal.class))
-                .isEqualByComparingTo(BigDecimal.valueOf(balance));
     }
 
     @Configuration(proxyBeanMethods = false)

@@ -361,3 +361,22 @@ From a fresh exported index snapshot, `mvn test` and
 **153 non-integration cases** and **15 PostgreSQL integration cases**, with no
 failures, errors, or skips. Application packaging also succeeded. The obsolete
 IntelliJ module descriptor is handled by a separate metadata-only commit.
+
+## Controller-to-database cleanup — 2026-10-23
+
+The user requested a read-only review from controller to database, then approved
+the cleanup plan. OpenCode with `openai/gpt-6.1-sol` traced both request flows and
+checked production/test references using filesystem tools and Git. `apply_patch`
+removed the superseded pessimistic-locking and individual balance-write methods
+from the query port, its adapter, and the Spring Data aggregate repository, along
+with the unused paging helper, import, and obsolete test scaffolding.
+
+The decimal precision and metadata/withdrawal-preservation assertions were migrated
+to the active batch adapter's PostgreSQL integration coverage, including watermark
+persistence and optimistic version increments. Existing uncommitted pagination
+edits were preserved. Current persistence documentation describes the read-only
+query port and streaming/batch update path.
+
+`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on
+JDK 27 with release 25: **164 non-integration cases and 26 PostgreSQL integration
+cases**, without failures, errors, or skips. Application packaging also succeeded.

@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
 import org.ikigaidigital.domain.interest.TimeDeposit;
+import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -224,6 +226,40 @@ class IncrementalBalanceUpdateIT {
                 .isInstanceOf(OptimisticLockingFailureException.class);
         assertThat(balances()).containsExactly(1000.0, 1000.0);
         assertThat(jdbc.queryForList("SELECT version FROM \"timeDeposits\" ORDER BY id", Long.class)).containsExactly(0L, 1L);
+        assertReleased();
+    }
+
+    @Test
+    void savesBatchWithoutRoundingBalancesOrOverwritingMetadataAndWithdrawals() {
+        jdbc.execute("""
+                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days, version)
+                VALUES (1, 'basic', 12.345, 31, 10, 7)
+                """);
+        jdbc.execute("INSERT INTO withdrawals (id, \"timeDepositId\", amount, date) VALUES (11, 1, 2.50, DATE '2026-01-02')");
+        double balance = 12.345 + 0.01;
+
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            try (var stream = observed.streamPending()) {
+                var snapshot = stream.findFirst().orElseThrow();
+                // Different plan, age, and withdrawals must not overwrite stored metadata.
+                observed.saveBatch(List.of(new TimeDeposit(snapshot.getId(), PlanType.PREMIUM, balance, 99,
+                        List.of(), 31, snapshot.getVersion())));
+            }
+        });
+
+        var actual = aggregates.findById(1).orElseThrow();
+        assertThat(actual.planType()).isEqualTo("basic");
+        assertThat(actual.days()).isEqualTo(31);
+        assertThat(actual.lastProcessedDays()).isEqualTo(31);
+        assertThat(actual.version()).isEqualTo(8L);
+        assertThat(actual.withdrawals()).singleElement().satisfies(withdrawal -> {
+            assertThat(withdrawal.id()).isEqualTo(11);
+            assertThat(withdrawal.amount()).isEqualByComparingTo("2.50");
+            assertThat(withdrawal.date()).isEqualTo(LocalDate.of(2026, 1, 2));
+        });
+        assertThat(balance(1)).isEqualTo(balance);
+        assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 1", BigDecimal.class))
+                .isEqualByComparingTo(BigDecimal.valueOf(balance));
         assertReleased();
     }
 

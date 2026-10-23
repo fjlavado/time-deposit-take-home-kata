@@ -10,8 +10,4 @@ public record Page<T>(List<T> content, int page, int size, long totalElements) {
     public long totalPages() {
         return Math.ceilDiv(totalElements, size);
     }
-
-    public boolean hasNext() {
-        return (long) page + 1 < totalPages();
-    }
 }

@@ -183,3 +183,17 @@ domain/application modules and exactly two HTTP business operations.
 - Adapter module refactor: moved both adapters under the `adapter` Maven parent/aggregator. `mvn -B clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25: all 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips. The OpenAPI resource and Flyway migrations load successfully from the nested modules.
 - Contract-first web refactor: OpenAPI Generator 7.26.0 now generates the Spring API interface and response models from `docs/openapi.yaml` during Maven's `generate-sources` phase. The controller implements the generated interface; handwritten response DTOs and HTTP mappings were removed. `mvn -B -pl adapter/adapter-web -am generate-sources`, `mvn -B clean test`, and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25. All 37 unit/controller/contract/architecture/legacy cases and 10 PostgreSQL integration cases passed without failures, errors, or skips, including generated mapping/status inheritance, response fields, decimal/date serialization, and persisted updates.
 - Doodle-inspired hexagonal refactor: `mvn -B -pl application -am verify`, `mvn -B clean test`, and `DOCKER_HOST=unix:///var/run/docker.sock mvn -B verify` passed on JDK 27 with release 25. The final reactor passed 44 unit/controller/contract/architecture/legacy cases and 11 PostgreSQL integration cases without failures, errors, or skips. The new buses, handlers, adapter mappers, transaction decoration, and architecture rules are tracked with commit checkpoints in [HEXAGONAL_REFACTOR_PLAN.md](HEXAGONAL_REFACTOR_PLAN.md).
+
+## Controller-to-database cleanup — 2026-10-23
+
+- [x] Trace both endpoints and verify obsolete-method references against production callers and tests.
+- [x] Remove the superseded locking and individual balance-write methods from the retrieval port, JDBC adapter, and aggregate repository.
+- [x] Remove obsolete test-double methods/counters, unused transaction-template setup, the unused static import, and the test-only `Page.hasNext()` helper.
+- [x] Move decimal precision and metadata/withdrawal-preservation assertions to batch persistence integration coverage, including watermark updates and version increments.
+- [x] Update current persistence documentation and record the AI-assisted workflow.
+- [x] Run `mvn test`, `DOCKER_HOST=unix:///var/run/docker.sock mvn verify`, and `git diff --check`.
+
+Verification passed on JDK 27 with release 25: **164 non-integration cases and
+26 PostgreSQL integration cases**, with no failures, errors, or skips. The executable
+application was packaged successfully. Coverage includes bounded pagination reads,
+decimal precision, idempotency, cursor closure, rollback, and HTTP concurrency.

@@ -36,7 +36,6 @@ class TimeDepositHandlersTest {
         assertThat(result.content()).isEqualTo(deposits);
         assertThat(result.totalElements()).isEqualTo(1);
         assertThat(repository.saveCalls).isZero();
-        assertThat(repository.lockCalls).isZero();
         assertThat(deposits.getFirst().getBalance()).isEqualTo(1000.0);
         assertThat(deposits.getFirst().getWithdrawals()).hasSize(1);
     }
@@ -55,7 +54,6 @@ class TimeDepositHandlersTest {
             assertThat(repository.deposits.get(i)).isSameAs(original.get(i));
             assertThat(DepositMetadata.snapshot(repository.deposits.get(i))).isEqualTo(metadata.get(i));
         }
-        assertThat(repository.lockCalls).isZero();
         assertThat(repository.saveCalls).isEqualTo(1);
     }
 
@@ -84,13 +82,11 @@ class TimeDepositHandlersTest {
         assertThat(page.size()).isEqualTo(2);
         assertThat(page.totalElements()).isEqualTo(5);
         assertThat(page.totalPages()).isEqualTo(3);
-        assertThat(page.hasNext()).isTrue();
-        assertThat(repository.lockCalls).isZero();
         assertThat(repository.saveCalls).isZero();
     }
 
     @Test
-    void updatesEveryBatchExactlyOnceWithoutPessimisticLocking() {
+    void updatesEveryBatchExactlyOnceWithoutPaginatedReads() {
         var repository = new InMemoryRepository(IntStream.rangeClosed(1, 201)
                 .mapToObj(id -> deposit(id, "basic", 31)).toList());
 
@@ -99,7 +95,6 @@ class TimeDepositHandlersTest {
         assertThat(repository.deposits).extracting(TimeDeposit::getBalance).containsOnly(1000.83);
         assertThat(repository.savedIds).containsExactlyElementsOf(IntStream.rangeClosed(1, 201).boxed().toList());
         assertThat(repository.searches).isEmpty();
-        assertThat(repository.lockCalls).isZero();
         assertThat(repository.saveCalls).isEqualTo(3);
     }
 
@@ -130,7 +125,6 @@ class TimeDepositHandlersTest {
         private final List<Integer> savedIds = new ArrayList<>();
         private final List<PageRequestVO> searches = new ArrayList<>();
         private int saveCalls;
-        private int lockCalls;
 
         private InMemoryRepository(List<TimeDeposit> deposits) {
             this.deposits = List.copyOf(deposits);
@@ -145,24 +139,14 @@ class TimeDepositHandlersTest {
         }
 
         @Override
-        public void lockForBalanceUpdate() {
-            lockCalls++;
-        }
-
-        @Override
-        public void saveBalances(List<TimeDeposit> updated) {
-            savedIds.addAll(updated.stream().map(TimeDeposit::getId).toList());
-            saveCalls++;
-        }
-
-        @Override
         public Stream<TimeDeposit> streamPending() {
             return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays());
         }
 
         @Override
         public void saveBatch(List<TimeDeposit> updated) {
-            saveBalances(updated);
+            savedIds.addAll(updated.stream().map(TimeDeposit::getId).toList());
+            saveCalls++;
         }
     }
 }

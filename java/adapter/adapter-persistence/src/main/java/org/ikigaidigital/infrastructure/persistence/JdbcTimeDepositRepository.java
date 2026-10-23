@@ -12,7 +12,6 @@ import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJd
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Comparator;
 import java.util.stream.StreamSupport;
@@ -42,18 +41,5 @@ public final class JdbcTimeDepositRepository implements TimeDepositRepository {
                         .sorted(Comparator.comparing(TimeDepositTable::id)).map(mapper::toDomain).toList();
         return new Page<>(content,
                 result.getNumber(), result.getSize(), result.getTotalElements());
-    }
-
-    @Override
-    public void lockForBalanceUpdate() {
-        // The outer use-case transaction holds locks until all balances are saved.
-        // Stable lock order serializes concurrent updates without lost interest credits.
-        deposits.lockAllForBalanceUpdate();
-    }
-
-    @Override
-    public void saveBalances(List<TimeDeposit> deposits) {
-        deposits.forEach(deposit -> this.deposits.updateBalance(deposit.getId(),
-                BigDecimal.valueOf(deposit.getBalance())));
     }
 }
