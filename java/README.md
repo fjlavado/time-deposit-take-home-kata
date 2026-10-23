@@ -117,6 +117,10 @@ docker compose exec -T postgres psql -U time_deposit -d time_deposits < docs/sam
 
 The sample script inserts additional rows each time it is run. It is an explicit demonstration script, not a startup initializer or migration.
 
+For a repeatable large dataset and stress testing, see
+[performance testing](performance/README.md). Its isolated database supports
+100,000 deposits and approximately 500,000 withdrawals by default.
+
 Stop the local database with `docker compose down`; its named volume retains data.
 
 ## API

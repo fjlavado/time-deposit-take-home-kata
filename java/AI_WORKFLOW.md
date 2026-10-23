@@ -1,5 +1,17 @@
 # AI-assisted development workflow
 
+## Repeatable performance fixtures
+
+OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved performance plan
+under `java/performance/`, following `AGENTS.md`. The first increment adds an
+isolated PostgreSQL Compose project and parameterized deterministic reset/seed
+SQL. Real PostgreSQL fixture checks passed twice, covering row counts, all 24
+plan/age combinations, empty/heavy withdrawal collections, values/dates, clean
+versions/audit history, and identity sequences. `DOCKER_HOST=unix:///var/run/docker.sock
+mvn -q verify` also passed. The published database port was changed locally to
+55433 because 5433 was occupied. Commands and assumptions are in
+`performance/README.md`; this increment adds no schema migration.
+
 ## Background jobs and database-backed admission
 
 The latest user request was implemented with OpenCode, `openai/gpt-6.1-sol`, local
