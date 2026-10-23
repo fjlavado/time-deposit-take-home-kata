@@ -25,8 +25,8 @@ unrounded final double balance are preserved for API and direct callers alike.
 
 - V1 already defines the quoted `"timeDeposits"` table, `withdrawals`, and its index.
   V2 extends that schema rather than replacing tables or changing applied checksums.
-- V2's `last_processed_days` column is obsolete and no longer mapped by the application.
-  Its `version` column remains in use for optimistic locking. Existing balances are
+- V3 removes V2's obsolete `last_processed_days` column and its check constraint.
+  The `version` column remains in use for optimistic locking. Existing balances are
   preserved, without principal reconstruction or reversal of previously credited interest.
 - The domain model and application service contain no framework annotations.
   Bootstrap's `@Transactional` decorator covers the ID cursor, aggregate loading, and every save,
@@ -72,7 +72,8 @@ Coverage includes:
   and one 409. Only the winning versions/balances persist; a successful retry calculates again.
 - Whole-transaction rollback on later-group failure or a stale/deleted aggregate,
   Spring Data version checks and increments, decimal precision,
-  and migration of a populated V1 schema without losing withdrawals or their index.
+  and migration of populated V1/V2 schemas without losing balances, versions,
+  withdrawals, or their index. Flyway validates the unchanged historical migrations.
 
 This work used OpenCode with `openai/gpt-6.1-sol` and the repository's `AGENTS.md`.
 The user's latest instruction removes incremental processing entirely, superseding

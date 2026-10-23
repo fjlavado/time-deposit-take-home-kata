@@ -8,6 +8,8 @@ import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -373,24 +375,40 @@ class StreamingBalanceUpdateIT {
         assertReleased();
     }
 
-    @Test
-    void upgradesPopulatedV1WithoutReplacingWithdrawalsOrLosingData() {
-        var v1 = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .schemas("upgrade_fixture").target("1").load();
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void upgradesPopulatedSchemasWithoutWatermarksOrDataLoss(int startingVersion) {
+        var previous = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas("upgrade_fixture").target(Integer.toString(startingVersion)).load();
         try {
-            v1.migrate();
+            previous.migrate();
             jdbc.execute("INSERT INTO upgrade_fixture.\"timeDeposits\" (id, \"planType\", balance, days) VALUES (1, 'basic', 123.45, 31)");
             jdbc.execute("INSERT INTO upgrade_fixture.withdrawals (\"timeDepositId\", amount, date) VALUES (1, 12.34, DATE '2026-01-02')");
+            if (startingVersion == 2) {
+                // Existing credited balances are kept as-is, regardless of the old watermark.
+                jdbc.execute("UPDATE upgrade_fixture.\"timeDeposits\" SET last_processed_days = 91, version = 7");
+            }
+            var deposits = jdbc.queryForList("SELECT id, \"planType\", balance, days FROM upgrade_fixture.\"timeDeposits\"");
+            var withdrawals = jdbc.queryForList("SELECT * FROM upgrade_fixture.withdrawals");
             var latest = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                     .schemas("upgrade_fixture").load();
-            assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(latest.migrate().migrationsExecuted).isEqualTo(3 - startingVersion);
             latest.validate();
             assertThat(latest.migrate().migrationsExecuted).isZero();
-            assertThat(jdbc.queryForObject("SELECT balance FROM upgrade_fixture.\"timeDeposits\"", BigDecimal.class))
-                    .isEqualByComparingTo("123.45");
-            assertThat(jdbc.queryForObject("SELECT last_processed_days FROM upgrade_fixture.\"timeDeposits\"", Integer.class)).isZero();
-            assertThat(jdbc.queryForObject("SELECT version FROM upgrade_fixture.\"timeDeposits\"", Long.class)).isZero();
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM upgrade_fixture.withdrawals", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForList("SELECT id, \"planType\", balance, days FROM upgrade_fixture.\"timeDeposits\""))
+                    .isEqualTo(deposits);
+            assertThat(jdbc.queryForList("SELECT * FROM upgrade_fixture.withdrawals")).isEqualTo(withdrawals);
+            assertThat(jdbc.queryForObject("SELECT version FROM upgrade_fixture.\"timeDeposits\"", Long.class))
+                    .isEqualTo(startingVersion == 2 ? 7L : 0L);
+            assertThat(jdbc.queryForList("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = 'upgrade_fixture' AND table_name = 'timeDeposits'
+                    """, String.class)).contains("version").doesNotContain("last_processed_days");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*) FROM pg_constraint
+                    WHERE conrelid = 'upgrade_fixture."timeDeposits"'::regclass
+                      AND conname = 'time_deposits_processed_days_nonnegative'
+                    """, Integer.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname = 'upgrade_fixture' AND indexname = 'withdrawals_time_deposit_id_idx'", Integer.class))
                     .isEqualTo(1);
         } finally {

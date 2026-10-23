@@ -74,9 +74,9 @@ eligibility boundaries, repeated credits at unchanged ages, the real ID-only cur
 bounded aggregate loading/saving, withdrawal preservation, cursor closure on failures,
 framework-managed optimistic locking, multi-group rollback, and concurrent HTTP updates.
 Historical verification results are recorded in `IMPLEMENTATION_PLAN.md`.
-The incremental-processing removal passed `mvn -q clean test` and
+The incremental-processing removal and schema cleanup passed `mvn -q clean test` and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: **158 non-integration cases
-and 28 PostgreSQL integration cases**, without failures, errors, or skips.
+and 29 PostgreSQL integration cases**, without failures, errors, or skips.
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -263,6 +263,7 @@ Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/
 
 - `V1__create_time_deposit_schema.sql` creates the quoted `"timeDeposits"` table and camel-case columns, `withdrawals`, required constraints, and the foreign-key index.
 - `V2__add_withdrawals_and_calculation_tracking.sql` historically added `last_processed_days` and `version`, both defaulting to zero. The application no longer maps or uses `last_processed_days`; `version` still supports optimistic locking. Withdrawals and its index already exist in V1.
+- `V3__remove_calculation_watermark.sql` drops `last_processed_days` and its check constraint. Existing balances, versions, withdrawals, and their index are preserved; no previously credited interest is reversed. Integration coverage upgrades populated V1 and V2 schemas and validates their migration histories.
 - Do not modify an already-applied migration; startup validates recorded checksums.
 - Flyway is the only schema initializer. Spring SQL initialization is disabled; no ORM schema generation is used.
 - Flyway clean is disabled in application configuration. Integration tests use disposable PostgreSQL instances.

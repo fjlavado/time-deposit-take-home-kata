@@ -448,3 +448,19 @@ Verification: `mvn -q clean test` and
 release 25: **158 non-integration cases and 28 PostgreSQL integration cases**,
 without failures, errors, or skips. Commits are requested explicitly and grouped
 by behavioral removal and schema cleanup.
+
+## Watermark schema cleanup — 2026-10-23
+
+OpenCode with `openai/gpt-6.1-sol` completed the separate schema checkpoint using
+the same filesystem, patch, Git, Maven, and local Testcontainers workflow. V3 drops
+the unused processing column and its check constraint while leaving V1/V2 unchanged.
+Parameterized PostgreSQL coverage upgrades populated V1 and V2 schemas, including
+an old nonzero watermark and version, and asserts exact preservation of deposit
+data and withdrawals, retention of version/index, absence of the obsolete column
+and constraint, migration checksum validation, and a no-op second migration.
+
+The first verification identified an existing test hardcoded to schema version 2;
+its expected version was updated to 3. The subsequent full
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed **158 non-integration
+cases and 29 PostgreSQL integration cases**, without failures, errors, or skips.
+Application packaging succeeded on JDK 27 with release 25.

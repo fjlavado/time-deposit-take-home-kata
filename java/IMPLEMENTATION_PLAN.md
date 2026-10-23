@@ -246,3 +246,16 @@ Both commands passed on JDK 27 with release 25: **158 non-integration cases and
 streaming, withdrawal preservation, cursor closure, rollback, and deterministic
 HTTP optimistic-conflict coverage remain in place. The unused V2 watermark column
 is left for a separate forward-migration checkpoint.
+
+## Remove obsolete watermark schema — 2026-10-23
+
+- [x] Add V3 to drop the watermark column and its check constraint without modifying V1/V2.
+- [x] Verify upgrades from populated V1 and V2 schemas, including a nonzero watermark/version.
+- [x] Preserve balances, plan/age/IDs, loaded versions, withdrawal rows, and their index.
+- [x] Validate applied migrations, verify repeated migration is a no-op, and update the schema-version assertion.
+- [x] Update current schema documentation and run `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`.
+
+Full verification passed on JDK 27 with release 25: **158 non-integration cases and
+29 PostgreSQL integration cases**, without failures, errors, or skips. Fresh-schema
+application startup and all current-age calculation, streaming, rollback, and
+optimistic-lock checks pass against V3.
