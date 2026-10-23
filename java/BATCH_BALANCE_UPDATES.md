@@ -39,18 +39,27 @@ including the Student cutoff and overflow-safe interval arithmetic.
   If a deployment has already credited interest, populate its watermarks from an
   authoritative history before triggering the new operation; the schema cannot infer it.
 - The domain model and application service contain no framework annotations.
-  Bootstrap's `@Transactional` decorator covers opening/closing the cursor and every
-  write, including direct calls to the inbound use case.
-- Spring Data JDBC opens an ID-ordered `Stream` for `days > last_processed_days`.
-  A calculation-only row mapper excludes withdrawals. Positive fetch size 100 plus
-  the transaction's disabled autocommit enables PostgreSQL server-side fetching.
-- The service holds at most 100 domain snapshots per write batch. JDBC batch updates
-  modify only balance/watermark/version; mapped withdrawal aggregates are never saved.
-- The JDBC aggregate root has `@Version`. Custom SQL also performs
-  `WHERE id = ? AND version = ?`, increments the version, and requires one updated row
-  per statement. A missing row, stale version, or unverifiable row count fails closed.
+  Bootstrap's `@Transactional` decorator covers the ID cursor, aggregate loading, and every save,
+  including direct calls to the inbound use case.
+- `TimeDepositBalanceJdbcRepository` extends `CrudRepository` and exposes an ID-only
+  `streamPending()` query: `SELECT id FROM "timeDeposits" WHERE days > last_processed_days ORDER BY id`.
+  JDBC fetch size 100 and the transaction's disabled autocommit enable PostgreSQL
+  server-side fetching. The service closes the stream with try-with-resources.
+- The service buffers at most 100 IDs, then uses inherited `findAllById(ids)` to load
+  that group's complete aggregates, including withdrawals. Single-query loading avoids
+  per-deposit withdrawal queries. Loaded aggregates are ordered by ID; the full dataset
+  is never materialized. The service rechecks `days > lastProcessedDays` because another
+  transaction may have processed a streamed ID before its aggregate is loaded.
+- The service saves each loaded group before reading the next. The bidirectional mapper
+  preserves IDs, plan, age, balance, watermark, loaded version, and withdrawals before
+  inherited `CrudRepository.saveAll()` persists each group. These are application-level
+  groups, not a custom JDBC batch guarantee. Spring Data JDBC manages aggregate writes,
+  including child-row deletion/reinsertion where needed; withdrawal data is preserved.
+- The JDBC aggregate root has `@Version`. Spring Data JDBC checks the loaded version,
+  increments it on save, and throws `OptimisticLockingFailureException` for stale or
+  deleted aggregates. The outer transaction rolls back all earlier saves and child changes.
 - No automatic retry runs inside a failed transaction. A client retry starts a fresh
-  transaction and reopens the cursor. A concurrent request started after the winner's
+  transaction and reloads aggregates. A concurrent request started after the winner's
   commit can succeed as a no-op. Concurrent inserts after cursor opening are processed
   by the next request. Other deposit writers must participate in version checking.
 
@@ -61,25 +70,29 @@ PostgreSQL `17.6-alpine` through Testcontainers. Existing build and Swagger inst
 in [README.md](README.md) apply. OpenAPI 3.0.0 describes both operations and HTTP 409.
 
 Verification on 2026-10-23 used JDK 27 with Maven's release-25 target:
-`mvn -q test` passed during implementation and final `mvn -q verify` passed
-**164 non-integration cases and 26 PostgreSQL integration cases**, with no failures,
+`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed
+**162 non-integration cases and 29 PostgreSQL integration cases**, with no failures,
 errors, or skips. Coverage includes:
 
 - Every plan's incremental periods, eligibility boundaries, missed-period catch-up,
   Student expiry, rounding compatibility, and idempotency of balances/state/versions.
-- 10,005 deposits with withdrawals, one observed PostgreSQL server-side cursor
-  (`pg_cursors`), driver fetch size 100, autocommit off, and 101 real JDBC batches.
-- Explicit result-set/statement closure on success, read failure, write failure, and
-  optimistic conflict. Repeated calls with a two-connection Hikari pool end with zero
-  active connections; stream close occurs before transaction completion.
+- 10,005 IDs fetched through one observed PostgreSQL server-side cursor, fetch size 100,
+  autocommit off, 101 bounded aggregate reads, and 101 application-level save groups.
+  Exact withdrawal IDs, ownership, amounts, and dates survive saves.
+- Actual result-set/statement closure on success and ID-read, aggregate-load, write,
+  and conflict failures. Repeated calls with a two-connection Hikari pool end with zero
+  active connections; stream closure happens before transaction completion.
 - Two HTTP requests synchronized before their first writes return exactly one 204
   and one 409. A retry is a no-op, and only the winning versions/balances persist.
-- Whole-transaction rollback on later-batch failure or a stale row inside a batch,
-  Spring Data aggregate version checks, rejection of unverifiable JDBC row counts,
+- Whole-transaction rollback on later-group failure or a stale/deleted aggregate,
+  Spring Data version checks and increments, decimal precision,
   and migration of a populated V1 schema without losing withdrawals or their index.
 
 This work used OpenCode with `openai/gpt-6.1-sol` and the repository's `AGENTS.md`.
-AI-assisted work covered migration, schedule state, ports, streaming orchestration,
-JDBC mapping/batch locking, REST wiring, and behavioral tests. The user explicitly
-selected fixed 30-day periods and seven atomic commits. Pre-existing pagination edits
-were excluded from these commits using a separate Git index.
+AI-assisted work covered migration, schedule state, ports, the initial streaming
+implementation, and the subsequent user-requested aggregate-persistence refactor.
+The latest refinement restores an ID-only pending stream while retaining inherited
+CRUD operations for bounded aggregate loads and saves. It supersedes the earlier
+eager-loading choice, preserves the schedule value object, and updates behavioral tests
+and documentation. The user selected fixed 30-day periods and bounded ID-driven processing.
+Historical implementation and commit details are recorded in `AI_WORKFLOW.md`.

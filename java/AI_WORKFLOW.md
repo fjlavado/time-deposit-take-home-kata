@@ -380,3 +380,48 @@ query port and streaming/batch update path.
 `mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on
 JDK 27 with release 25: **164 non-integration cases and 26 PostgreSQL integration
 cases**, without failures, errors, or skips. Application packaging also succeeded.
+
+## Aggregate CRUD persistence and schedule value object — 2026-10-23
+
+The user requested inherited Spring Data JDBC CRUD operations for balance updates,
+full aggregate loading with withdrawals, framework-managed optimistic locking, and
+an external value object for pending interest-period calculations. During planning,
+they selected **eager loading of all aggregates** through `findAll()`.
+
+OpenCode with `openai/gpt-6.1-sol` used filesystem reads, reference searches, Git,
+`apply_patch`, Maven, and the local Docker socket. The assisted work adds reverse
+aggregate mapping, delegates writes to `CrudRepository.saveAll()`, changes the
+framework-free port to eager `findPending()`/`saveAll()`, extracts immutable
+`InterestPeriodSchedule`, and removes custom SQL, row mapping, batch-count checks,
+cursor setup, and driver-specific test probes. The application retains save groups
+of 100 inside one transaction; all loaded aggregates are held in memory.
+
+Behavioral tests now verify full withdrawal ownership/IDs/amounts/dates after saves,
+decimal precision, watermark/version persistence, stale and deleted aggregate
+rejection, whole-transaction rollback, idempotent retries, HTTP concurrency, and
+schedule boundaries/overflow. Existing GET pagination query-count tests also passed.
+`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27
+with release 25: **160 non-integration cases and 27 PostgreSQL integration cases**,
+without failures, errors, or skips. Application packaging succeeded.
+
+## ID-only streaming refinement — 2026-10-23
+
+The user clarified that pending deposits must be streamed as IDs, with bounded
+aggregate loading through inherited `findAllById()`, to avoid retaining all deposits
+and withdrawals in memory. This supersedes the preceding eager-loading choice.
+OpenCode with `openai/gpt-6.1-sol` used filesystem tools, Git, `apply_patch`, Maven,
+and local PostgreSQL Testcontainers to restore the pending query as `SELECT id`,
+consume ID groups of at most 100, load complete aggregates, and retain `saveAll()`
+and framework-managed optimistic locking. The service rechecks loaded watermarks.
+
+The assisted work also restores server-side ID fetching and try-with-resources,
+and adapts driver instrumentation to observe cursor fetch/closure and aggregate
+reads without inspecting generated write SQL. Unit tests verify lazy consumption;
+PostgreSQL tests observe one ID-only cursor, fetch size 100, autocommit off, and
+101 aggregate reads/save groups for 10,005 deposits with preserved withdrawals.
+Read/load/write failures close the cursor and roll back earlier saves; concurrent
+HTTP behavior and idempotent retries also pass.
+
+`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27
+with release 25: **162 non-integration cases and 29 PostgreSQL integration cases**,
+without failures, errors, or skips. Application packaging succeeded.

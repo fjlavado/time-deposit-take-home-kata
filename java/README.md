@@ -24,7 +24,7 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 | `domain` | Single deposit model, calculator service, immutable plan/balance/withdrawal values, sealed interest strategies, repository port; no framework dependencies |
 | `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and mapper, balance-only persistence, Flyway SQL |
+| `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and bidirectional mapper, aggregate persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
 | `bootstrap` | Executable application, explicit adapter/handler/bus wiring, transactional command-bus decorator, architecture/end-to-end tests |
 
@@ -34,7 +34,7 @@ ArchUnit verifies framework-free core modules, inward dependencies, adapter isol
 
 This structure adopts Doodle's synchronous command/query bus pattern within the existing module boundaries.
 
-- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through `CommandBus`. Its handler invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service closes its ID-ordered stream of pending deposits, credits only unprocessed 30-day periods through the unchanged calculator, and writes batches of 100. All batches share one transaction; commit completes before the HTTP response. See [batch update semantics](BATCH_BALANCE_UPDATES.md).
+- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through `CommandBus`. Its handler invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes an ID-only pending-deposit stream in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, credits unprocessed 30-day periods through the unchanged calculator, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one transaction; the ID cursor closes before commit, which completes before the HTTP response. See [incremental update semantics](BATCH_BALANCE_UPDATES.md).
 - **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page of deposits including withdrawals. The framework-free repository port uses domain `PageRequestVO` and `Page<TimeDeposit>` values; only the persistence adapter translates them to/from Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models, and the controller returns the generated page envelope. Query dispatch does not start a transaction. Reads use the same persisted model, so a subsequent GET sees a completed POST's updates.
 
 The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`; the update uses `Void` because it has no response payload. The runtime registry casts are confined to the dispatchers.
@@ -46,13 +46,13 @@ The buses associate each request class with one handler in a private immutable r
 The persistence adapter follows Doodle's separation of annotated table models, Spring Data repository interfaces, and domain mapping:
 
 - `jdbc/TimeDepositTable` is the aggregate root; its `Set<WithdrawalTable>` uses `@MappedCollection(idColumn = "timeDepositId")`. Both table models are immutable records with `@Table` and `@Id`; explicit camel-case mappings match the existing PostgreSQL schema. Monetary fields use `BigDecimal`; withdrawal dates use `LocalDate`. Empty mapped collections are normalized to an empty set.
-- `repository/TimeDepositJdbcRepository` extends `CrudRepository<TimeDepositTable, Integer>` and inherits aggregate operations without custom locking or update queries. Retrieval loads withdrawals through their owning deposit rather than through a separate repository; balance processing uses the dedicated streaming/batch adapter.
+- `repository/TimeDepositJdbcRepository` and `repository/TimeDepositBalanceJdbcRepository` extend `CrudRepository<TimeDepositTable, Integer>` and inherit aggregate operations. Withdrawals are loaded and saved through their owning deposit rather than through a separate repository.
 - `repository/TimeDepositPageJdbcRepository` extends `PagingAndSortingRepository<TimeDepositIdTable, Integer>`. The ID-only record maps the same table and needs no additional schema. Its inherited `findAll(Pageable)` performs database pagination ordered by ID; the aggregate repository's inherited `findAllById(ids)` loads just that page's deposits and mapped withdrawals.
 - Bootstrap enables [single-query loading](https://docs.spring.io/spring-data/relational/reference/jdbc/entity-persistence.html#jdbc.loading-aggregates) on `JdbcMappingContext` before initialization. Spring Data JDBC 4.1.1's direct paged aggregate read falls back to extra child queries. Paging IDs first keeps inherited repository operations while allowing `findAllById` to load the page's complete aggregates in one query. Each populated page uses at most three read queries: IDs, an optional total count, and aggregates. Empty pages skip aggregate loading; query count does not grow with deposits or withdrawals per page.
 - `JdbcTimeDepositRepository` implements the read-only `TimeDepositRepository` port's `search(PageRequestVO)` and delegates aggregate conversion to `TimeDepositPersistenceMapper`. Loaded deposits and mapped withdrawals are sorted by ID in memory within the bounded page; selection and pagination happen in the database.
-- `TimeDepositRepositoryAdapter` implements `TimeDepositRepositoryPort` for balance processing. A Spring Data JDBC `Stream<TimeDepositTable>` uses a calculation-only row mapper, without loading withdrawals. Bootstrap supplies a JDBC template with fetch size 100; the transaction disables autocommit so PostgreSQL actually uses a server-side cursor.
-- `TimeDepositTable.version` uses `@Version`. Balance-only JDBC batch SQL explicitly checks that version, increments it, and verifies every affected-row count; a stale or deleted row aborts the whole transaction. Only balance, processing watermark, and version are updated. The existing paginated read adapter remains responsible for GET.
-- Bootstrap uses `spring-boot-starter-data-jdbc` and explicit `@EnableJdbcRepositories` because its application class is outside the persistence package. The persistence adapter owns Spring Data mapping, stream retrieval, and JDBC batch SQL.
+- `TimeDepositRepositoryAdapter` implements `TimeDepositRepositoryPort` for balance processing. `streamPending()` selects only IDs with `days > last_processed_days`, ordered by ID. The service buffers at most 100 IDs and calls `findAllById(ids)`; the adapter uses inherited Spring Data loading and maps complete aggregates, including withdrawals, in ID order. Only the current group is materialized. The service rechecks processing watermarks after aggregate loading to skip deposits processed since cursor creation.
+- `saveAll()` maps complete domain snapshots back to table records, preserving withdrawal IDs/amounts/dates, plan, age, and loaded version, and calls inherited `CrudRepository.saveAll()`. `TimeDepositTable.version` uses `@Version`, so Spring Data JDBC performs optimistic version checking and increments. A stale or deleted row aborts the whole transaction. Aggregate saves may delete/reinsert mapped child rows; the mapper carries the full withdrawal collection so its persisted data is preserved.
+- Bootstrap uses `spring-boot-starter-data-jdbc` and explicit `@EnableJdbcRepositories` because its application class is outside the persistence package. Its JDBC template sets fetch size 100; together with autocommit disabled by the outer transaction, this enables PostgreSQL server-side fetching of IDs. Bootstrap also enables single-query aggregate loading and owns the transaction boundary.
 
 PostgreSQL integration tests instantiate actual Spring Data repository proxies and count prepared and plain JDBC read statements, including the total-count query. They cover bounded query counts, complete withdrawal collections, full/partial/out-of-range pages, and empty results. Their direct JDBC access is used for fixture setup and independent database assertions. Existing build, database configuration, and startup commands below also apply to this implementation; Flyway remains responsible for schema evolution.
 
@@ -69,16 +69,13 @@ mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packa
 
 ### Current refactor verification status
 
-The 2026-10-23 update follows the supplied `PlanType`, sealed-strategy, package, and
-rounding changes. After initial compilation blockers, the user approved three minimal
-production fixes: `TimeDeposit.getBalance()` now reads `Balance.value()`, the calculator
-registry constructor accepts `Map<PlanType, InterestStrategy>`, and the persistence
-mapper wraps stored plan names in `PlanType`.
-
-After the singleton test cleanup, verification passed on JDK 27 with release 25:
-`mvn test` ran **153 non-integration cases**, and
+The latest aggregate-persistence and schedule-value-object refactor passed on JDK 27
+with release 25: `mvn test` ran **162 non-integration cases**, and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed those plus
-**15 PostgreSQL integration cases**, with no failures, errors, or skips.
+**29 PostgreSQL integration cases**, with no failures, errors, or skips. Coverage
+includes the real ID-only cursor, bounded aggregate loading/saving, withdrawal preservation,
+cursor closure on failures, framework-managed optimistic locking, multi-group rollback,
+concurrent HTTP updates, and schedule boundaries.
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -245,8 +242,8 @@ var deposit = new TimeDeposit(1, loyalty, 1000.0, 46);
 double interest = resolver.resolve(deposit).calculateInterestRounded(deposit); // 4.17
 ```
 
-The update handler passes loaded deposits directly to the calculator and saves their
-balances within the same transaction. The no-argument calculator retains the three
+The update service passes each historical-period deposit to the calculator and saves
+the complete updated aggregates within the same transaction. The no-argument calculator retains the three
 built-in rules and `updateBalance(List<TimeDeposit>)` mutates balances in place.
 `Double getBalance()` and `setBalance(Double)` retain their balance API. The deposit
 encapsulates immutable `Balance` values and credits already-rounded interest via

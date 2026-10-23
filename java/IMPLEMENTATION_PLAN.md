@@ -197,3 +197,35 @@ Verification passed on JDK 27 with release 25: **164 non-integration cases and
 26 PostgreSQL integration cases**, with no failures, errors, or skips. The executable
 application was packaged successfully. Coverage includes bounded pagination reads,
 decimal precision, idempotency, cursor closure, rollback, and HTTP concurrency.
+
+## Aggregate CRUD persistence and schedule value object — 2026-10-23
+
+- [x] Use inherited `CrudRepository.findAll()` on the balance repository to load full aggregates with withdrawals; filter pending deposits and sort by ID in the adapter.
+- [x] Add domain-to-table mapping that preserves all aggregate fields and loaded versions, and delegate persistence to inherited `saveAll()` and `@Version` optimistic locking.
+- [x] Replace the streaming port with eager `findPending()`/`saveAll()` operations and retain application-level save groups of 100 in one transaction.
+- [x] Remove custom query/row mapper, JDBC batch SQL/row-count checks, cursor configuration, and obsolete driver-specific test instrumentation.
+- [x] Extract plan-based due-day calculations into immutable `InterestPeriodSchedule`; leave deposit state in `TimeDeposit` and monetary calculation in the existing calculator.
+- [x] Migrate tests to aggregate round trips, withdrawal preservation, real framework-managed stale/deleted-row failures, rollback, idempotency, and HTTP concurrency.
+- [x] Update current documentation, project guidance, and AI workflow records.
+- [x] Run `mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify`.
+
+Verification passed on JDK 27 with release 25: **160 non-integration cases and
+27 PostgreSQL integration cases**, without failures, errors, or skips. Packaging
+succeeded. Real-database coverage includes 10,005 aggregates with withdrawals,
+101 application save groups, preserved child data, and whole-transaction rollback.
+
+## ID-only streaming and bounded aggregate loading — 2026-10-23
+
+The user's follow-up supersedes eager `findAll()` loading from the preceding checkpoint.
+
+- [x] Restore the pending predicate and ID ordering in `streamPending()`, selecting only `id` and returning `Stream<Integer>`.
+- [x] Consume at most 100 IDs at a time, load each group's full deposits/withdrawals through inherited `findAllById()`, and persist via inherited `saveAll()`.
+- [x] Recheck loaded processing watermarks to avoid saving deposits already processed since cursor creation.
+- [x] Restore fetch size 100 and an outer transaction for PostgreSQL server-side fetching; close the ID stream before transaction completion on success/failure.
+- [x] Verify lazy ID consumption, bounded aggregate loads, actual cursor behavior/closure, full withdrawal preservation, and rollback across failed read/load/save groups.
+- [x] Update current documentation/guidance and run `mvn test`, `DOCKER_HOST=unix:///var/run/docker.sock mvn verify`, and `git diff --check`.
+
+Verification passed on JDK 27 with release 25: **162 non-integration cases and
+29 PostgreSQL integration cases**, without failures, errors, or skips. The large
+fixture observes one ID-only cursor and 101 aggregate reads/save groups for 10,005
+deposits, with each group bounded to 100. Packaging succeeded.
