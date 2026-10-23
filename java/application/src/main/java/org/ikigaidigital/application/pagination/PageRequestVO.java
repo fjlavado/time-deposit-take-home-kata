@@ -1,4 +1,4 @@
-package org.ikigaidigital.domain.model;
+package org.ikigaidigital.application.pagination;
 
 /** A zero-based page of deposits, ordered by ID. */
 public record PageRequestVO(int page, int size) {

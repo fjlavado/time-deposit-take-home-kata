@@ -3,7 +3,7 @@ package org.ikigaidigital.infrastructure.configuration;
 import org.ikigaidigital.application.command.handler.StartBalanceUpdateJobCommandHandler;
 import org.ikigaidigital.application.port.in.BalanceUpdateJob;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
-import org.ikigaidigital.domain.port.out.BalanceUpdateExecutionRepository;
+import org.ikigaidigital.application.port.out.BalanceUpdateExecutionRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;

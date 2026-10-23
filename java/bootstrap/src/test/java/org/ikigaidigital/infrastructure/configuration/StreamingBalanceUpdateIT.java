@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
 import org.ikigaidigital.domain.interest.TimeDeposit;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

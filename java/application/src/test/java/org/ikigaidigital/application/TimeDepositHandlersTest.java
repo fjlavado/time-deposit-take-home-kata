@@ -10,10 +10,10 @@ import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCo
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
 import org.ikigaidigital.domain.model.Withdrawal;
-import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequestVO;
-import org.ikigaidigital.domain.port.out.TimeDepositRepository;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.pagination.Page;
+import org.ikigaidigital.application.pagination.PageRequestVO;
+import org.ikigaidigital.application.port.out.TimeDepositRepository;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.junit.jupiter.api.Test;
 

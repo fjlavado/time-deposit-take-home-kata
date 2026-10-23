@@ -2,9 +2,9 @@ package org.ikigaidigital.application.query.handler;
 
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.domain.interest.TimeDeposit;
-import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequestVO;
-import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.application.pagination.Page;
+import org.ikigaidigital.application.pagination.PageRequestVO;
+import org.ikigaidigital.application.port.out.TimeDepositRepository;
 
 public final class RetrieveTimeDepositsQueryHandler
         implements QueryHandler<RetrieveTimeDepositsQuery, Page<TimeDeposit>> {

@@ -53,10 +53,10 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 
 | Module | Project dependencies | Responsibility |
 | --- | --- | --- |
-| `domain` | None | Single deposit model/calculator service, immutable plan/balance/withdrawal values, sealed interest strategies, outbound repository port |
-| `application` | `domain` | Typed command/query requests, inbound bus ports, framework-free dispatchers and handlers |
+| `domain` | None | Single deposit model/calculator service, immutable plan/balance/withdrawal values and sealed interest strategies |
+| `application` | `domain` | Typed requests, inbound/outbound ports, pagination, execution state, framework-free dispatchers and handlers |
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | `domain` | Spring Data JDBC table records/repositories, domain adapter/mapper, versioned SQL migrations |
+| `adapter/adapter-persistence` | `application`, `domain` | Spring Data JDBC table records/repositories, application port adapters, domain mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
 | `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
 

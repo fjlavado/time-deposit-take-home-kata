@@ -12,6 +12,11 @@
     <dependencies>
         <dependency>
             <groupId>org.ikigaidigital</groupId>
+            <artifactId>application</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ikigaidigital</groupId>
             <artifactId>domain</artifactId>
             <version>${project.version}</version>
         </dependency>

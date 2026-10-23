@@ -4,7 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.interest.vo.PlanType;
-import org.ikigaidigital.domain.model.PageRequestVO;
+import org.ikigaidigital.application.pagination.PageRequestVO;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;

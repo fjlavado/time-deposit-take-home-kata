@@ -1,4 +1,4 @@
-package org.ikigaidigital.domain.model;
+package org.ikigaidigital.application.job;
 
 public enum BalanceUpdateExecutionStatus {
     STARTED, RUNNING, COMPLETED, FAILED

@@ -1,5 +1,19 @@
 # AI-assisted development workflow
 
+## Strict hexagonal ownership — 2026-10-23
+
+The user approved the architecture audit and requested implementation, atomic
+commits, and consolidation of Java Markdown documentation under `docs/`.
+OpenCode (`openai/gpt-6.1-sol`) uses local read/search/patch tools, Git, Maven
+3.9.4, JDK 27 (release 25), and PostgreSQL Testcontainers through the local Docker
+socket. No subagents or additional skills are used.
+
+The first checkpoint moves repository ports to `application.port.out`, paging
+contracts to `application.pagination`, and job state to `application.job`.
+Persistence now depends inward on application; web is forbidden from accessing
+outbound ports. `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed before committing.
+
 ## Repeatable performance fixtures
 
 OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved performance plan

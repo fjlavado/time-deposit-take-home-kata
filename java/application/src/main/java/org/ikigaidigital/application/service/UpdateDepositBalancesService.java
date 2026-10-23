@@ -1,7 +1,7 @@
 package org.ikigaidigital.application.service;
 
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.services.TimeDepositCalculator;
 
 import java.util.ArrayList;

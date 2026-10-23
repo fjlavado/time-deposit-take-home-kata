@@ -1,8 +1,8 @@
 package org.ikigaidigital.infrastructure.configuration;
 
-import org.ikigaidigital.domain.port.out.TimeDepositRepository;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
-import org.ikigaidigital.domain.port.out.BalanceUpdateExecutionRepository;
+import org.ikigaidigital.application.port.out.TimeDepositRepository;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.BalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.JdbcBalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.JdbcTimeDepositRepository;
 import org.ikigaidigital.infrastructure.persistence.TimeDepositRepositoryAdapter;

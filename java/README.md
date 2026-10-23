@@ -21,8 +21,8 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 
 | Module | Responsibility |
 | --- | --- |
-| `domain` | Single deposit model, calculator service, immutable plan/balance/withdrawal values, sealed interest strategies, repository port; no framework dependencies |
-| `application` | Typed commands/queries, inbound bus ports, synchronous dispatchers, and constructor-injected handlers; depends only on domain |
+| `domain` | Single deposit model, calculator service, immutable plan/balance/withdrawal values and sealed interest strategies; no framework dependencies |
+| `application` | Typed commands/queries, inbound bus ports, outbound repository ports, pagination contracts, job execution state, synchronous dispatchers and handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and bidirectional mapper, aggregate persistence, Flyway SQL |
 | `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |

@@ -3,7 +3,7 @@ package org.ikigaidigital.application;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.interest.vo.PlanType;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.services.TimeDepositCalculator;
 import org.junit.jupiter.api.Test;
 

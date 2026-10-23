@@ -1,9 +1,9 @@
 package org.ikigaidigital.infrastructure.persistence;
 
 import org.ikigaidigital.domain.interest.TimeDeposit;
-import org.ikigaidigital.domain.port.out.TimeDepositRepository;
-import org.ikigaidigital.domain.model.Page;
-import org.ikigaidigital.domain.model.PageRequestVO;
+import org.ikigaidigital.application.port.out.TimeDepositRepository;
+import org.ikigaidigital.application.pagination.Page;
+import org.ikigaidigital.application.pagination.PageRequestVO;
 import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositIdTable;
 import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositTable;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;

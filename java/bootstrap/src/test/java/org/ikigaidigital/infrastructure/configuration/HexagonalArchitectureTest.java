@@ -48,7 +48,7 @@ class HexagonalArchitectureTest {
                 .layer("Web").definedBy("org.ikigaidigital.infrastructure.web..")
                 .layer("Bootstrap").definedBy("org.ikigaidigital.infrastructure.configuration..")
                 .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Persistence", "Web", "Bootstrap")
-                .whereLayer("Application").mayOnlyBeAccessedByLayers("Web", "Bootstrap")
+                .whereLayer("Application").mayOnlyBeAccessedByLayers("Persistence", "Web", "Bootstrap")
                 .whereLayer("Persistence").mayOnlyBeAccessedByLayers("Bootstrap")
                 .whereLayer("Web").mayOnlyBeAccessedByLayers("Bootstrap")
                 .whereLayer("Bootstrap").mayNotBeAccessedByAnyLayer()
@@ -69,7 +69,7 @@ class HexagonalArchitectureTest {
                 .check(BACKEND);
         noClasses().that().resideInAPackage("org.ikigaidigital.infrastructure.web..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "org.ikigaidigital.domain.port..", "org.ikigaidigital.services..")
+                        "org.ikigaidigital.application.port.out..", "org.ikigaidigital.services..")
                 .check(BACKEND);
     }
 

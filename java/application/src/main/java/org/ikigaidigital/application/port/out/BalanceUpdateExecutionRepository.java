@@ -1,6 +1,6 @@
-package org.ikigaidigital.domain.port.out;
+package org.ikigaidigital.application.port.out;
 
-import org.ikigaidigital.domain.model.BalanceUpdateExecutionStatus;
+import org.ikigaidigital.application.job.BalanceUpdateExecutionStatus;
 
 import java.time.Instant;
 import java.util.UUID;

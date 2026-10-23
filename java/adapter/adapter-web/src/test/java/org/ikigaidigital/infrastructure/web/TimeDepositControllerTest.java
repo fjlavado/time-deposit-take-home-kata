@@ -10,7 +10,7 @@ import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.model.Withdrawal;
-import org.ikigaidigital.domain.model.Page;
+import org.ikigaidigital.application.pagination.Page;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositPageResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.TimeDepositResponse;
 import org.ikigaidigital.infrastructure.web.generated.model.WithdrawalResponse;

@@ -1,4 +1,4 @@
-package org.ikigaidigital.domain.model;
+package org.ikigaidigital.application.pagination;
 
 import java.util.List;
 

@@ -10,7 +10,7 @@ import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.Query;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,7 +1,7 @@
 package org.ikigaidigital.infrastructure.persistence;
 
-import org.ikigaidigital.domain.model.BalanceUpdateExecutionStatus;
-import org.ikigaidigital.domain.port.out.BalanceUpdateExecutionRepository;
+import org.ikigaidigital.application.job.BalanceUpdateExecutionStatus;
+import org.ikigaidigital.application.port.out.BalanceUpdateExecutionRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Timestamp;

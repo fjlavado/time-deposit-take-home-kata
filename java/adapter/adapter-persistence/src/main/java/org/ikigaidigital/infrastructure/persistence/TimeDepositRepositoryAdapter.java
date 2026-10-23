@@ -1,7 +1,7 @@
 package org.ikigaidigital.infrastructure.persistence;
 
 import org.ikigaidigital.domain.interest.TimeDeposit;
-import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.infrastructure.persistence.jdbc.TimeDepositTable;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositBalanceJdbcRepository;

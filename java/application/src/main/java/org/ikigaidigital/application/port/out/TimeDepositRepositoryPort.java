@@ -1,4 +1,4 @@
-package org.ikigaidigital.domain.port.out;
+package org.ikigaidigital.application.port.out;
 
 import org.ikigaidigital.domain.interest.TimeDeposit;
 
