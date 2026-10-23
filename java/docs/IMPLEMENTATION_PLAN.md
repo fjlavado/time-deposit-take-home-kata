@@ -1,5 +1,10 @@
 # Time Deposit Backend Implementation Plan
 
+Current module ownership is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+The strict follow-up moved application contracts out of domain and runtime
+implementations out of bootstrap; earlier steps and test totals below are history.
+Commands and source paths are relative to `java/`.
+
 Status: all seven implementation steps completed and verified on 2026-10-22. The subsequent
 [Doodle-inspired hexagonal refactor](HEXAGONAL_REFACTOR_PLAN.md) is also complete and verified.
 The subsequent [starter calculator Strategy refactor](CALCULATOR_REFACTOR_PLAN.md)

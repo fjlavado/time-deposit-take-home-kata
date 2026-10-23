@@ -1,5 +1,8 @@
 # Performance testing
 
+This guide lives under `java/docs/performance/`; executable fixtures and the runner
+remain in `java/performance/`. Commands below still run from `java/`.
+
 See [the measured local results](RESULTS.md) for the 100,000-deposit evaluation,
 including the mixed-load saturation, late admission after timeout, and recovery.
 

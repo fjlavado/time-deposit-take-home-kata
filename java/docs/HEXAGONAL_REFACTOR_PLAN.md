@@ -1,5 +1,8 @@
 # Doodle-Inspired Hexagonal Refactoring Plan
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for current ownership. Commands and source
+paths in this historical plan are relative to `java/` unless otherwise specified.
+
 ## Current ownership correction — 2026-10-23
 
 The historical steps below originally placed runtime implementations in bootstrap.

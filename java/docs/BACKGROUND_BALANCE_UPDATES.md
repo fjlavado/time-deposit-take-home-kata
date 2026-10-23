@@ -1,5 +1,7 @@
 # Background balance-update jobs
 
+Commands and source paths in this guide are relative to `java/`.
+
 Balance updates use UUID execution IDs and a minimal internal `balance_update_executions`
 audit table (Flyway V4). Each accepted attempt creates one row: `id`, `status`,
 `started_at`, and nullable `finished_at`. `COUNT(*)` counts accepted attempts; group by

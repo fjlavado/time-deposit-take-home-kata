@@ -1,5 +1,8 @@
 # Local stress evaluation — 2026-10-23
 
+See [the performance guide](README.md) for setup. These historical measurements
+predate the strict ownership refactor; paths below remain relative to `java/`.
+
 ## Outcome
 
 **The read baseline passed; mixed stress exceeded the latency/error budgets.**

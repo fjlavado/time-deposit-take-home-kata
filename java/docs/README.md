@@ -1,8 +1,13 @@
 # Time Deposit backend
 
 Java 25 target, Maven multi-module build, Spring Boot 4.1.1, PostgreSQL, Spring Data JDBC, and Flyway.
-The implementation follows the [assignment](../README.md), the tracked [implementation plan](IMPLEMENTATION_PLAN.md),
+The implementation follows the [assignment](../../README.md), the tracked [implementation plan](IMPLEMENTATION_PLAN.md),
 and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md).
+
+This is the Java documentation entry point. All commands and source paths in these
+guides are relative to `java/`, unless stated otherwise; run commands from that
+directory, not `java/docs/`. Agent instructions remain in [AGENTS.md](../AGENTS.md).
+See [architecture ownership](ARCHITECTURE.md) for the enforced module boundaries.
 
 ## Architecture
 
@@ -58,7 +63,7 @@ PostgreSQL integration tests instantiate actual Spring Data repository proxies a
 
 ## Build and test
 
-Run commands from this `java/` directory. Prerequisites: Maven 3.6.3+ and JDK 25 or newer with support for release 25. JDK 27 is supported for compilation using `--release 25`; verification during development used JDK 27.
+Run commands from `java/`. Prerequisites: Maven 3.6.3+ and JDK 25 or newer with support for release 25. JDK 27 is supported for compilation using `--release 25`; verification during development used JDK 27.
 
 ```sh
 mvn test       # Unit, controller/contract, architecture, and shared strategy tests; no Docker required
@@ -68,6 +73,12 @@ mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packa
 `*Test` classes run with Surefire; `*IT` classes run with Failsafe. Integration tests require a reachable Docker daemon and pull PostgreSQL `17.6-alpine`. They use isolated databases; no manually started database is required. Tests fail rather than silently skip when Docker is unavailable.
 
 ### Current refactor verification status
+
+The strict hexagonal ownership refactor passed `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q -Pperformance verify` on JDK 27
+with release 25. All nine architecture checks and 36 PostgreSQL integration cases
+passed without failures, errors or skips. The optional performance module builds;
+the measured stress results below remain historical, not a new benchmark run.
 
 Verification uses JDK 27 with release 25. The suite covers per-invocation calculation,
 eligibility boundaries, repeated credits at unchanged ages, the real ID-only cursor,
@@ -186,7 +197,7 @@ Calculation behavior is documented in [BATCH_BALANCE_UPDATES.md](BATCH_BALANCE_U
 
 ### Contract-first code generation
 
-[`docs/openapi.yaml`](docs/openapi.yaml) is the source of truth for HTTP mappings, response statuses, and response models. The web adapter runs the pinned OpenAPI Generator Maven plugin (7.26.0, Spring generator with Spring Boot 4/Jackson 3 support) automatically during `generate-sources`, including when running `mvn test`, `mvn verify`, or `mvn package`.
+[`docs/openapi.yaml`](openapi.yaml) is the source of truth for HTTP mappings, response statuses, and response models. The web adapter runs the pinned OpenAPI Generator Maven plugin (7.26.0, Spring generator with Spring Boot 4/Jackson 3 support) automatically during `generate-sources`, including when running `mvn test`, `mvn verify`, or `mvn package`.
 
 To generate the contract code on its own:
 
@@ -200,9 +211,9 @@ Generated `TimeDepositsApi`, `TimeDepositPageResponse`, `TimeDepositResponse`, `
 
 ### Swagger contract
 
-The [OpenAPI contract](docs/openapi.yaml) describes exactly the two business operations. It is not served through an additional application endpoint.
+The [OpenAPI contract](openapi.yaml) describes exactly the two business operations. It is not served through an additional application endpoint.
 
-To use Swagger UI, keep the application running and launch a separate UI from this directory:
+To use Swagger UI, keep the application running and launch a separate UI from `java/`:
 
 ```sh
 docker run --rm -p 8081:8080 \

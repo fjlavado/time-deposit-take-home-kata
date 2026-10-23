@@ -1,5 +1,7 @@
 # Java calculator Strategy refactor
 
+Commands and source paths in this plan are relative to `java/`.
+
 ## Scope and compatibility
 
 The original refactor is complete; its historical results and commit checkpoints are

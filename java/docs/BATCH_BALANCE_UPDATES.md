@@ -1,5 +1,7 @@
 # Bulk balance updates
 
+Commands and source paths in this guide are relative to `java/`.
+
 `POST /time-deposits/balance-updates` starts a background execution, returning **202**
 with `STARTED` and a UUID. If a job is queued/running, it returns **409 RUNNING** with
 that active UUID and schedules no additional work. Database-backed admission prevents

@@ -28,6 +28,17 @@ including all nine architecture checks and 36 PostgreSQL integration cases with
 no failures, errors or skips. The optional performance module compiles/packages;
 the historical load evaluation was not rerun for this structural refactor.
 
+The documentation checkpoint moves all Java project Markdown into `java/docs/`,
+including performance guides/results under `docs/performance/`, and updates links
+and reproducible prompt paths. `java/AGENTS.md` stays at the project root for
+automatic discovery and explicitly documents this exception and the docs layout.
+The repository-root assignment stays in place. The current ownership guide is
+[ARCHITECTURE.md](ARCHITECTURE.md); historical checkpoints remain historical.
+The documentation-only checkpoint passed `git diff --check` and a temporary
+standard-library Python validator covering all 11 Java Markdown files, 43 local
+links, the docs-only layout exception and stale `java/*.md` project references.
+The validator was run from `/tmp/opencode/` and is not a project dependency.
+
 ## Repeatable performance fixtures
 
 OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved performance plan
@@ -38,7 +49,7 @@ plan/age combinations, empty/heavy withdrawal collections, values/dates, clean
 versions/audit history, and identity sequences. `DOCKER_HOST=unix:///var/run/docker.sock
 mvn -q verify` also passed. The published database port was changed locally to
 55433 because 5433 was occupied. Commands and assumptions are in
-`performance/README.md`; this increment adds no schema migration.
+`docs/performance/README.md`; this increment adds no schema migration.
 
 The next increment implements the standalone Gatling Java module, opt-in Maven
 profile, and standard-library Python evaluation runner. Official Gatling docs,
@@ -69,7 +80,7 @@ The corrected default evaluation finished in about nine minutes on 2026-10-23:
 Three executions completed without overlap, including one unacknowledged late
 admission; all immutable data fingerprints matched and every version reached 3.
 The runner correctly returned exit code 1 for failed stress budgets and UUID
-reconciliation. `performance/RESULTS.md` preserves actual metrics, environment,
+reconciliation. `docs/performance/RESULTS.md` preserves actual metrics, environment,
 resource observations, interpretation, and follow-up experiments; raw HTML/JSON,
 GC/application logs, and resource samples remain under the ignored evaluation
 target directory. No production performance tuning was performed as part of
@@ -109,7 +120,7 @@ Final clean-build verification passed `mvn -q clean test` and
 
 - Harness: OpenCode, running in this repository with filesystem patch/read tools and terminal access.
 - Model: OpenAI `openai/gpt-6.1-sol`.
-- Repository instructions: [`AGENTS.md`](AGENTS.md), plus the assignment in the repository-root README.
+- Repository instructions: [`AGENTS.md`](../AGENTS.md), plus the assignment in the repository-root README.
 - Tracking and design: [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) and [`HEXAGONAL_REFACTOR_PLAN.md`](HEXAGONAL_REFACTOR_PLAN.md).
 - Hound HTTP fetches: checked Maven Central artifact availability and metadata for Spring Boot 4.1.1, ArchUnit, and the Swagger parser.
 - Verification: Maven, JDK 27 with release 25, JUnit, AssertJ, ArchUnit, and real PostgreSQL Testcontainers tests through the local Docker socket.
@@ -120,7 +131,7 @@ No subagents, additional skills, custom MCP servers, or agent plugins were used 
 
 1. Clone the personal fork and open its root in OpenCode.
 2. Select `openai/gpt-6.1-sol` using an authenticated provider supported by your OpenCode installation.
-3. Read the root assignment, `java/AGENTS.md`, and `java/IMPLEMENTATION_PLAN.md` as project context.
+3. Read the root assignment, `java/AGENTS.md`, and `java/docs/IMPLEMENTATION_PLAN.md` as project context.
 4. Use the following task prompt, reflecting the user's agreed constraints:
 
    > Implement the tracked Time Deposit backend plan incrementally under java/. Target Java 25 using JDK 27 and Spring Boot 4.1.1. Enforce hexagonal boundaries with Maven modules. Keep all existing java/src/ classes and tests unchanged; their refactoring is deferred. Use PostgreSQL and Flyway versioned SQL migrations, exactly the two documented REST operations, and framework-free domain/application code. Verify each layer and the final reactor with meaningful tests, including real PostgreSQL Testcontainers coverage. Update the tracking document with actual results. Keep changes ready for atomic commits; do not commit unless explicitly requested.
@@ -154,7 +165,7 @@ handlers, repository ports/adapters, and controllers through local filesystem re
 
 The agreed task prompt can be reproduced as:
 
-> Apply java/HEXAGONAL_REFACTOR_PLAN.md using Doodle-style typed command/query records,
+> Apply java/docs/HEXAGONAL_REFACTOR_PLAN.md using Doodle-style typed command/query records,
 > dedicated handlers, and synchronous dispatch buses. Preserve all Maven modules, the
 > framework-free domain/application core, interest behavior, two generated HTTP operations,
 > ordered locking, and transactional bulk updates. Extract adapter mappers, wire command
@@ -186,7 +197,7 @@ plan was removed and a clean working tree confirmed before Java work began.
 
 Reproduce the task with:
 
-> Follow java/CALCULATOR_REFACTOR_PLAN.md. Establish behavioral coverage against the
+> Follow java/docs/CALCULATOR_REFACTOR_PLAN.md. Establish behavioral coverage against the
 > original Java calculator, then extract injectable plan strategies while preserving
 > the shared model, no-argument construction, updateBalance signature, exact double
 > arithmetic, and in-place updates. Cover plan boundaries, rounding, batching,
