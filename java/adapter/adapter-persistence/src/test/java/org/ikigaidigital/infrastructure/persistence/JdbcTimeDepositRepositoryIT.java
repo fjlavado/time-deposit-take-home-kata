@@ -129,7 +129,7 @@ class JdbcTimeDepositRepositoryIT {
     void validatesVersionedSchemaAndDoesNotReapplyIt() {
         flyway.validate();
 
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
         assertThat(flyway.migrate().migrationsExecuted).isZero();
     }
 
