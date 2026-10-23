@@ -11,7 +11,8 @@ import org.ikigaidigital.application.query.Query;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
-import org.ikigaidigital.domain.model.Page;
+import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.ikigaidigital.domain.model.PageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -32,6 +34,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +58,7 @@ class BalanceUpdateIT {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired TimeDepositRepository repository;
+    @Autowired TimeDepositRepositoryPort balanceRepository;
     @Autowired QueryBus queries;
     @Autowired CommandBus commands;
     @Autowired TimeDepositCalculator calculator;
@@ -65,9 +69,9 @@ class BalanceUpdateIT {
     void resetData() {
         jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
         jdbc.execute("""
-                INSERT INTO "timeDeposits" (id, "planType", balance, days)
-                VALUES (1, 'basic', 1000, 31), (2, 'student', 1000, 365),
-                       (3, 'premium', 1000, 46), (4, 'student', 1000, 366)
+                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days)
+                VALUES (1, 'basic', 1000, 31, 0), (2, 'student', 1000, 365, 331),
+                       (3, 'premium', 1000, 46, 0), (4, 'student', 1000, 366, 365)
                 """);
         jdbc.execute("INSERT INTO withdrawals (\"timeDepositId\", amount, date) VALUES (1, 12.34, DATE '2026-01-02')");
     }
@@ -88,28 +92,23 @@ class BalanceUpdateIT {
                 INSERT INTO "timeDeposits" (id, "planType", balance, days)
                 SELECT id, 'basic', 1000, 31 FROM generate_series(5, 105) AS id
                 """);
-        var failingRepository = new TimeDepositRepository() {
+        var failingRepository = new TimeDepositRepositoryPort() {
             @Override
-            public Page<TimeDeposit> search(PageRequest request) {
-                return repository.search(request);
-            }
-
-            @Override
-            public void lockForBalanceUpdate() {
+            public Stream<TimeDeposit> streamPending() {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
-                repository.lockForBalanceUpdate();
+                return balanceRepository.streamPending();
             }
 
             @Override
-            public void saveBalances(List<TimeDeposit> deposits) {
+            public void saveBatch(List<TimeDeposit> deposits) {
                 if (deposits.getFirst().getId() > 100) {
-                    repository.saveBalances(List.of(deposits.getFirst()));
+                    balanceRepository.saveBatch(List.of(deposits.getFirst()));
                     throw new IllegalStateException("Simulated failure while persisting the second page");
                 }
-                repository.saveBalances(deposits);
+                balanceRepository.saveBatch(deposits);
             }
         };
-        var handler = new UpdateTimeDepositBalancesCommandHandler(failingRepository, calculator);
+        var handler = new UpdateTimeDepositBalancesCommandHandler(new UpdateDepositBalancesService(failingRepository, calculator));
         var transactional = new TransactionalCommandBus(new DefaultCommandBus(List.of(handler)),
                 new TransactionTemplate(transactions));
 
@@ -121,23 +120,31 @@ class BalanceUpdateIT {
     }
 
     @Test
-    void serializesConcurrentUpdatesWithoutLosingAnInterestCredit() throws Exception {
+    void concurrentTriggersNeverCreditTheSamePeriodTwice() throws Exception {
         var start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> {
                 start.await();
-                return commands.dispatch(new UpdateTimeDepositBalancesCommand());
+                return tryUpdate();
             });
             var second = executor.submit(() -> {
                 start.await();
-                return commands.dispatch(new UpdateTimeDepositBalancesCommand());
+                return tryUpdate();
             });
             start.countDown();
-            first.get(20, TimeUnit.SECONDS);
-            second.get(20, TimeUnit.SECONDS);
+            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS))).contains(true);
         }
 
-        assertThat(repository.search(new PageRequest(0, 20)).content().get(1).getBalance()).isEqualTo(1005.01);
+        assertThat(repository.search(new PageRequest(0, 20)).content().get(1).getBalance()).isEqualTo(1002.5);
+    }
+
+    private boolean tryUpdate() {
+        try {
+            commands.dispatch(new UpdateTimeDepositBalancesCommand());
+            return true;
+        } catch (OptimisticLockingFailureException conflict) {
+            return false;
+        }
     }
 
     @Test

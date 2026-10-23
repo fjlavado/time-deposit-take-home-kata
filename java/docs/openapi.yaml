@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Time Deposit API
-  version: 2.0.0
+  version: 3.0.0
   description: >-
-    Retrieves deposits and credits one month's interest per update invocation.
+    Retrieves deposits and credits only unprocessed monthly interest periods.
     Rates are annual percentages divided by twelve. Only interest is rounded to
     two decimal places using BigDecimal.valueOf of the double interest and HALF_UP.
     The resulting interest is added to the balance without final-balance rounding.
@@ -43,13 +43,17 @@ paths:
       operationId: updateTimeDepositBalances
       summary: Apply and persist monthly interest to every deposit
       description: >-
-        Non-idempotent: every invocation credits eligible deposits again, without
-        advancing days or deducting withdrawals. Basic earns 1%/12 after day 30;
-        student earns 3%/12 on days 31 through 365; premium earns 5%/12 after day 45.
-        Unknown plan names earn no interest. All updates commit in one transaction.
+        Idempotent at the same deposit age. Monthly periods are fixed 30-day intervals,
+        with first credits on day 31 for Basic/Student and day 46 for Premium.
+        Missed periods compound in order at the original calculator's annual rate
+        divided by twelve. Student credits stop after day 365. Unknown plans earn
+        no interest. Days and withdrawals are not changed. All batches commit in
+        one transaction; an optimistic-lock conflict rolls back the entire request.
       responses:
         '204':
           description: All balances updated successfully; no response body
+        '409':
+          description: Concurrent modification; no changes from this request committed. Retry the operation.
 components:
   schemas:
     TimeDepositPage:

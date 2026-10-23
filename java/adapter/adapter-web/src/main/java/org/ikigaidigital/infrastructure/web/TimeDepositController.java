@@ -30,7 +30,7 @@ public final class TimeDepositController implements TimeDepositsApi {
 
     @Override
     public void updateTimeDepositBalances() {
-        // Every invocation credits interest again; this command is intentionally non-idempotent.
+        // Only unprocessed monthly periods are credited; the transaction completes before 204.
         commandBus.dispatch(new UpdateTimeDepositBalancesCommand());
     }
 }

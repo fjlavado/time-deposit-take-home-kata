@@ -13,6 +13,8 @@ import org.ikigaidigital.domain.model.Withdrawal;
 import org.ikigaidigital.domain.model.Page;
 import org.ikigaidigital.domain.model.PageRequest;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -20,6 +22,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,7 +43,7 @@ class TimeDepositHandlersTest {
 
     @Test
     void updatesEveryDepositAndSavesTheResultsTogether() {
-        var original = List.of(deposit(1, "basic", 31), deposit(2, "student", 365),
+        var original = List.of(deposit(1, "basic", 31), deposit(2, "student", 31),
                 deposit(3, "premium", 46), deposit(4, "student", 366));
         var metadata = original.stream().map(DepositMetadata::snapshot).toList();
         var repository = new InMemoryRepository(original);
@@ -52,7 +55,7 @@ class TimeDepositHandlersTest {
             assertThat(repository.deposits.get(i)).isSameAs(original.get(i));
             assertThat(DepositMetadata.snapshot(repository.deposits.get(i))).isEqualTo(metadata.get(i));
         }
-        assertThat(repository.lockCalls).isEqualTo(1);
+        assertThat(repository.lockCalls).isZero();
         assertThat(repository.saveCalls).isEqualTo(1);
     }
 
@@ -66,7 +69,7 @@ class TimeDepositHandlersTest {
         assertThat(page.content()).isEmpty();
         assertThat(page.totalElements()).isZero();
         assertThat(page.totalPages()).isZero();
-        assertThat(repository.saveCalls).isEqualTo(1);
+        assertThat(repository.saveCalls).isZero();
     }
 
     @Test
@@ -87,7 +90,7 @@ class TimeDepositHandlersTest {
     }
 
     @Test
-    void updatesEveryPageExactlyOnceAfterLocking() {
+    void updatesEveryBatchExactlyOnceWithoutPessimisticLocking() {
         var repository = new InMemoryRepository(IntStream.rangeClosed(1, 201)
                 .mapToObj(id -> deposit(id, "basic", 31)).toList());
 
@@ -95,15 +98,14 @@ class TimeDepositHandlersTest {
 
         assertThat(repository.deposits).extracting(TimeDeposit::getBalance).containsOnly(1000.83);
         assertThat(repository.savedIds).containsExactlyElementsOf(IntStream.rangeClosed(1, 201).boxed().toList());
-        assertThat(repository.searches).containsExactly(new PageRequest(0, 100),
-                new PageRequest(1, 100), new PageRequest(2, 100));
-        assertThat(repository.lockCalls).isEqualTo(1);
+        assertThat(repository.searches).isEmpty();
+        assertThat(repository.lockCalls).isZero();
         assertThat(repository.saveCalls).isEqualTo(3);
     }
 
-    private static DefaultCommandBus commandBus(TimeDepositRepository repository) {
-        return new DefaultCommandBus(List.of(new UpdateTimeDepositBalancesCommandHandler(repository,
-                new TimeDepositCalculator())));
+    private static DefaultCommandBus commandBus(InMemoryRepository repository) {
+        return new DefaultCommandBus(List.of(new UpdateTimeDepositBalancesCommandHandler(
+                new UpdateDepositBalancesService(repository, new TimeDepositCalculator()))));
     }
 
     private static DefaultQueryBus queryBus(TimeDepositRepository repository) {
@@ -112,7 +114,8 @@ class TimeDepositHandlersTest {
 
     private static TimeDeposit deposit(int id, String plan, int days) {
         return new TimeDeposit(id, new PlanType(plan), 1000.0, days,
-                List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
+                List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))),
+                days == 366 ? 365 : 0, 0);
     }
 
     private record DepositMetadata(int id, PlanType planType, int days, List<Withdrawal> withdrawals) {
@@ -122,7 +125,7 @@ class TimeDepositHandlersTest {
         }
     }
 
-    private static final class InMemoryRepository implements TimeDepositRepository {
+    private static final class InMemoryRepository implements TimeDepositRepository, TimeDepositRepositoryPort {
         private final List<TimeDeposit> deposits;
         private final List<Integer> savedIds = new ArrayList<>();
         private final List<PageRequest> searches = new ArrayList<>();
@@ -148,9 +151,18 @@ class TimeDepositHandlersTest {
 
         @Override
         public void saveBalances(List<TimeDeposit> updated) {
-            assertThat(lockCalls).isEqualTo(1);
             savedIds.addAll(updated.stream().map(TimeDeposit::getId).toList());
             saveCalls++;
+        }
+
+        @Override
+        public Stream<TimeDeposit> streamPending() {
+            return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays());
+        }
+
+        @Override
+        public void saveBatch(List<TimeDeposit> updated) {
+            saveBalances(updated);
         }
     }
 }

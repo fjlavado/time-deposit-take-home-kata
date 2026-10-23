@@ -7,9 +7,12 @@ import org.ikigaidigital.application.command.handler.CommandHandler;
 import org.ikigaidigital.application.command.handler.UpdateTimeDepositBalancesCommandHandler;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.ikigaidigital.application.port.in.QueryBus;
+import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
+import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.application.query.handler.RetrieveTimeDepositsQueryHandler;
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
+import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -30,9 +33,14 @@ public class UseCaseConfiguration {
     }
 
     @Bean
-    UpdateTimeDepositBalancesCommandHandler updateTimeDepositBalancesCommandHandler(TimeDepositRepository repository,
-                                                                                   TimeDepositCalculator calculator) {
-        return new UpdateTimeDepositBalancesCommandHandler(repository, calculator);
+    UpdateDepositBalancesUseCase updateDepositBalancesUseCase(TimeDepositRepositoryPort repository,
+                                                             TimeDepositCalculator calculator) {
+        return new TransactionalUpdateDepositBalancesUseCase(new UpdateDepositBalancesService(repository, calculator));
+    }
+
+    @Bean
+    UpdateTimeDepositBalancesCommandHandler updateTimeDepositBalancesCommandHandler(UpdateDepositBalancesUseCase useCase) {
+        return new UpdateTimeDepositBalancesCommandHandler(useCase);
     }
 
     @Bean
