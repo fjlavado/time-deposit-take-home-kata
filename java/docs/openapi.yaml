@@ -8,7 +8,8 @@ info:
     two decimal places using BigDecimal.valueOf of the double interest and HALF_UP.
     The resulting interest is added to the balance without final-balance rounding.
 servers:
-  - url: http://localhost:8080
+  # Resolve against the served contract so Swagger follows the application's host and port.
+  - url: .
 paths:
   /time-deposits:
     get:

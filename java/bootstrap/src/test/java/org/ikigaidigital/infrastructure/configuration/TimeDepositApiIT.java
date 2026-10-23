@@ -18,7 +18,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +55,29 @@ class TimeDepositApiIT {
                 INSERT INTO withdrawals ("timeDepositId", amount, date)
                 VALUES (1, 12.34, DATE '2026-01-02'), (1, 0.10, DATE '2026-01-03')
                 """);
+    }
+
+    @Test
+    void servesSwaggerConsoleWithLocalAssetsAndThePackagedContract() throws Exception {
+        var html = request("GET", "/swagger-ui.html");
+        assertThat(html.statusCode()).isEqualTo(200);
+        assertThat(html.headers().firstValue("content-type")).hasValueSatisfying(type ->
+                assertThat(type).startsWith("text/html"));
+        assertThat(html.body()).contains("SwaggerUIBundle", "url: \"openapi.yaml\"", "validatorUrl: null");
+
+        for (var asset : new String[]{"swagger-ui.css", "swagger-ui-bundle.js"}) {
+            var path = "webjars/swagger-ui/5.17.14/" + asset;
+            assertThat(html.body()).contains(path);
+            var response = request("GET", "/" + path);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body()).isNotBlank();
+        }
+        var contract = request("GET", "/openapi.yaml");
+        assertThat(contract.statusCode()).isEqualTo(200);
+        try (var source = Objects.requireNonNull(getClass().getResourceAsStream("/static/openapi.yaml"))) {
+            assertThat(contract.body()).isEqualTo(new String(source.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        assertThat(contract.body()).contains("- url: .");
     }
 
     @Test

@@ -1,5 +1,22 @@
 # AI-assisted development workflow
 
+## Embedded Swagger console — 2026-10-23
+
+OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved embedded Swagger
+console using local read/search/patch tools, Maven 3.9.4, JDK 27 (release 25),
+and PostgreSQL Testcontainers. No subagents or additional skills were used.
+The custom instructions are in `java/AGENTS.md`; the user requested atomic
+commits after each completed step. The pre-existing application test edit is
+excluded from these commits.
+
+The web adapter owns the static HTML and pinned Swagger UI WebJar, and Maven
+packages the authoritative `docs/openapi.yaml` without maintaining a second copy.
+The contract uses a relative server URL for same-origin interactive execution.
+AI assistance covered implementation, real-HTTP resource coverage and usage
+documentation. `mvn -q test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed, including the
+real-HTTP HTML, JavaScript, CSS and contract checks. `git diff --check` passed.
+
 ## Strict hexagonal ownership — 2026-10-23
 
 The user approved the architecture audit and requested implementation, atomic

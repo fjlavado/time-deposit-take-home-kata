@@ -21,7 +21,7 @@ dependencies. Only bootstrap packages an executable Spring Boot application.
 | --- | --- |
 | `domain` | `domain.interest.TimeDeposit`, balance/plan values, withdrawals, `services.TimeDepositCalculator`, and sealed `services.interest` strategies/resolver |
 | `application` | Commands/queries, inbound use-case/bus ports, handlers/dispatchers, `port.out` repository/task-submission ports, pagination values and job orchestration/state |
-| `adapter/adapter-web` | Generated HTTP types, controller, API mapping and CORS policy |
+| `adapter/adapter-web` | Generated HTTP types, controller, API mapping, embedded Swagger UI/contract resources and CORS policy |
 | `adapter/adapter-persistence` | JDBC records/repositories, aggregate mapping, SQL/migrations, repository-port implementations and independent audit transactions |
 | `adapter/adapter-runtime` | Executor-backed task submission and Spring transactional use-case/command-bus decorators |
 | `bootstrap` | Entry point, object composition, framework configuration, managed executor lifecycle and end-to-end/architecture verification |

@@ -211,18 +211,18 @@ Generated `TimeDepositsApi`, `TimeDepositPageResponse`, `TimeDepositResponse`, `
 
 ### Swagger contract
 
-The [OpenAPI contract](openapi.yaml) describes exactly the two business operations. It is not served through an additional application endpoint.
+The [OpenAPI contract](openapi.yaml) describes exactly the two business operations.
+The web adapter packages that same source file at `/openapi.yaml` and serves an
+embedded console at **<http://localhost:8080/swagger-ui.html>**. Open it with the
+application running, expand either operation, select **Try it out**, then **Execute**.
 
-To use Swagger UI, keep the application running and launch a separate UI from `java/`:
-
-```sh
-docker run --rm -p 8081:8080 \
-  -e SWAGGER_JSON=/spec/openapi.yaml \
-  -v "$PWD/docs/openapi.yaml:/spec/openapi.yaml:ro" \
-  swaggerapi/swagger-ui:v5.17.14
-```
-
-Open <http://localhost:8081>, expand either operation, select **Try it out**, then **Execute**. The contract targets `http://localhost:8080`; the backend allows the UI's `http://localhost:8081` origin for these two operations. Adjust the contract's server URL if the application's port changes.
+Swagger UI 5.17.14 is pinned as a WebJar dependency; its JavaScript and CSS are
+served by the application without a CDN or a separate UI container. The relative
+OpenAPI server URL follows the application's host, port and context path, so
+changing `PORT` also works for interactive requests. Documentation resources do
+not add business operations. The existing CORS allowance for an optional external
+UI at `http://localhost:8081` remains available; such a UI must target the backend's
+`/openapi.yaml` URL.
 
 ## Interest rules and current domain API
 
