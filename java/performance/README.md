@@ -1,5 +1,8 @@
 # Performance testing
 
+See [the measured local results](RESULTS.md) for the 100,000-deposit evaluation,
+including the mixed-load saturation, late admission after timeout, and recovery.
+
 The performance environment uses PostgreSQL 17.6 in its own Compose project,
 database (`time_deposits_perf`), named volume, and localhost port (default 5433).
 Run these commands from `java/`. Prerequisites: Docker Compose, Maven, JDK 25+,
@@ -179,7 +182,8 @@ Each automated run writes `performance/target/evaluation-<UTC timestamp>/`:
   cumulative transaction/I/O/row/deadlock counters, and estimated live/dead rows.
   Database counters are cumulative across runs; compare first/last sample deltas.
 - `application.log`, `gc.log`, `before.json`, `jobs.json`, `partial-summary.json`;
-  `failure.json` on an interrupted/failed evaluation.
+  `failure.json` on an orchestration error. Budget failures are recorded in
+  `summary.json` and the phase's Maven log.
 
 Report latency/throughput comes from Gatling's **all-request** statistics (including
 failures); throughput averages over the simulation duration. Admission latency

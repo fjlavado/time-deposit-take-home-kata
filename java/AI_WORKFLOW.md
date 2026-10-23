@@ -35,6 +35,19 @@ and bounded waits; all five Python checks and the corrected real-HTTP quick
 evaluation passed. The stress workload and budgets were not reduced to hide the
 observed failures. Full `mvn -q -Pperformance verify` also passed before that run.
 
+The corrected default evaluation finished in about nine minutes on 2026-10-23:
+100,000 deposits / 500,005 withdrawals, baseline GET p95 165 ms, mixed GET p95
+10,001 ms with 6,968/11,000 timeouts, and recovery GET p95 155 ms with no errors.
+Three executions completed without overlap, including one unacknowledged late
+admission; all immutable data fingerprints matched and every version reached 3.
+The runner correctly returned exit code 1 for failed stress budgets and UUID
+reconciliation. `performance/RESULTS.md` preserves actual metrics, environment,
+resource observations, interpretation, and follow-up experiments; raw HTML/JSON,
+GC/application logs, and resource samples remain under the ignored evaluation
+target directory. No production performance tuning was performed as part of
+this evaluation. User-requested atomic commits separate fixtures, harness,
+measurement correction, and measured results.
+
 ## Background jobs and database-backed admission
 
 The latest user request was implemented with OpenCode, `openai/gpt-6.1-sol`, local
