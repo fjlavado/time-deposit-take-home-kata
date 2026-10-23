@@ -1,6 +1,7 @@
 package org.ikigaidigital.domain.interest;
 
 import org.ikigaidigital.domain.interest.vo.Balance;
+import org.ikigaidigital.domain.interest.vo.InterestPeriodSchedule;
 import org.ikigaidigital.domain.interest.vo.PlanType;
 import org.ikigaidigital.domain.model.Withdrawal;
 
@@ -65,24 +66,9 @@ public class TimeDeposit {
         return version;
     }
 
-    /**
-     * The kata has no calendar origin: monthly credits use fixed 30-day periods,
-     * starting on day 31 (Basic/Student) or 46 (Premium). The unchanged calculator
-     * evaluates eligibility and rounds each individual credit at that period's day.
-     */
+    /** Delegates credit-date selection to the plan's schedule using this snapshot's processing state. */
     public IntStream pendingInterestDays() {
-        boolean premium = PlanType.PREMIUM.equals(planType);
-        boolean student = PlanType.STUDENT.equals(planType);
-        if (!premium && !student && !PlanType.BASIC.equals(planType)) {
-            return IntStream.empty();
-        }
-        int first = premium ? 46 : 31;
-        int end = student ? Math.min(days, 365) : days;
-        // Long arithmetic avoids overflow near Integer.MAX_VALUE.
-        long next = lastProcessedDays < first ? first
-                : first + (((long) lastProcessedDays - first) / 30 + 1) * 30;
-        int count = next > end ? 0 : (int) (((long) end - next) / 30 + 1);
-        return IntStream.range(0, count).map(index -> (int) (next + (long) index * 30));
+        return new InterestPeriodSchedule(planType).pendingDays(days, lastProcessedDays);
     }
 
     /** Also acknowledges ineligible days, without changing the deposit's age. */

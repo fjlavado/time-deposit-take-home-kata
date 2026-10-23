@@ -256,6 +256,12 @@ rounding behavior; additional cases cover permitted strategies, typed registrati
 resolution, plan/balance values, deposit updates, and withdrawal immutability. See
 [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.
 
+`InterestPeriodSchedule`, an immutable value object containing `PlanType`, selects
+the pending 30-day credit dates from a deposit's age and processing watermark.
+`TimeDeposit.pendingInterestDays()` delegates to it. The application presents each
+selected period to the calculator in chronological order; the schedule does not
+calculate or round monetary amounts.
+
 ## Flyway schema evolution
 
 Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/` and are loaded from that dependency's classpath by bootstrap.

@@ -25,6 +25,11 @@ Its annual-rate/12 formula, per-credit HALF_UP rounding, and unrounded final dou
 balance are preserved. Calculator callers outside this batch API retain the original
 per-invocation behavior.
 
+`InterestPeriodSchedule` is an immutable domain value object containing `PlanType`.
+It selects pending period days from the current age and processing watermark,
+including the Student cutoff and overflow-safe interval arithmetic.
+`TimeDeposit.pendingInterestDays()` delegates to this value object.
+
 ## Persistence and concurrency
 
 - V1 already defines the quoted `"timeDeposits"` table, `withdrawals`, and its index.

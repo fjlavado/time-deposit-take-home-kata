@@ -11,18 +11,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IncrementalCalculationStateTest {
     @Test
-    void schedulesOnlyUnprocessedMonthlyPeriodsAcrossEligibilityBoundaries() {
-        assertThat(deposit(PlanType.BASIC, 30, 0).pendingInterestDays()).isEmpty();
-        assertThat(deposit(PlanType.BASIC, 91, 31).pendingInterestDays()).containsExactly(61, 91);
-        assertThat(deposit(PlanType.BASIC, 60, 32).pendingInterestDays()).isEmpty();
-        assertThat(deposit(PlanType.PREMIUM, 45, 0).pendingInterestDays()).isEmpty();
-        assertThat(deposit(PlanType.PREMIUM, 76, 0).pendingInterestDays()).containsExactly(46, 76);
-        assertThat(deposit(PlanType.STUDENT, 400, 331).pendingInterestDays()).containsExactly(361);
-        assertThat(deposit(PlanType.STUDENT, 400, 365).pendingInterestDays()).isEmpty();
-        assertThat(deposit(PlanType.UNKNOWN, 400, 0).pendingInterestDays()).isEmpty();
-    }
-
-    @Test
     void acknowledgingDaysMakesProcessingIdempotentWithoutChangingMetadataOrVersion() {
         var deposit = deposit(PlanType.BASIC, 91, 0);
         deposit.markCalculationProcessed();
@@ -39,10 +27,10 @@ class IncrementalCalculationStateTest {
     }
 
     @Test
-    void handlesMaximumDayCountWithoutOverflowAndRejectsInvalidState() {
-        assertThat(deposit(PlanType.BASIC, Integer.MAX_VALUE, Integer.MAX_VALUE - 30)
-                .pendingInterestDays()).containsExactly(2147483641);
+    void rejectsInvalidCalculationState() {
         assertThatThrownBy(() -> deposit(PlanType.BASIC, 31, -1))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new TimeDeposit(1, PlanType.BASIC, 1000.0, 31, List.of(), 0, -1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
