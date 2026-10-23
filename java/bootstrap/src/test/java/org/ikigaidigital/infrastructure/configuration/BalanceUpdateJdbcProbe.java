@@ -8,28 +8,31 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Observe actual driver calls, rather than mocking streaming/batching behavior. */
+/** Observe the ID-only cursor and aggregate reads without coupling tests to generated write SQL. */
 final class BalanceUpdateJdbcProbe {
-    final AtomicInteger selects = new AtomicInteger();
+    final AtomicInteger pendingReads = new AtomicInteger();
+    final AtomicInteger aggregateReads = new AtomicInteger();
+    final AtomicInteger cursorRows = new AtomicInteger();
     final AtomicInteger openStatements = new AtomicInteger();
     final AtomicInteger openResults = new AtomicInteger();
     final AtomicInteger closedResults = new AtomicInteger();
     final List<Integer> fetchSizes = new CopyOnWriteArrayList<>();
     final List<Boolean> autoCommit = new CopyOnWriteArrayList<>();
-    final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
 
     void reset() {
-        selects.set(0);
+        pendingReads.set(0);
+        aggregateReads.set(0);
+        cursorRows.set(0);
         openStatements.set(0);
         openResults.set(0);
         closedResults.set(0);
         fetchSizes.clear();
         autoCommit.clear();
-        batchSizes.clear();
     }
 
     DataSource wrap(DataSource source) {
@@ -46,10 +49,12 @@ final class BalanceUpdateJdbcProbe {
             var result = invocation.proceed();
             if (invocation.getMethod().getName().equals("prepareStatement")) {
                 var sql = ((String) invocation.getArguments()[0]).stripLeading();
-                boolean cursor = sql.contains("WHERE days > last_processed_days");
-                boolean batch = sql.startsWith("UPDATE \"timeDeposits\"") && sql.contains("version = version + 1");
-                if (cursor || batch) {
-                    return statement((PreparedStatement) result, wrapped[0], cursor);
+                if (sql.startsWith("SELECT id") && sql.contains("WHERE days > last_processed_days")) {
+                    return cursorStatement((PreparedStatement) result, wrapped[0]);
+                }
+                var upper = sql.toUpperCase(Locale.ROOT);
+                if ((upper.startsWith("SELECT") || upper.startsWith("WITH")) && sql.contains("\"timeDeposits\"")) {
+                    aggregateReads.incrementAndGet();
                 }
             }
             return result;
@@ -57,33 +62,24 @@ final class BalanceUpdateJdbcProbe {
         return wrapped[0];
     }
 
-    private PreparedStatement statement(PreparedStatement statement, Connection connection, boolean cursor) {
+    private PreparedStatement cursorStatement(PreparedStatement statement, Connection connection) {
         var closed = new AtomicBoolean();
-        var batchCount = new AtomicInteger();
-        if (cursor) {
-            openStatements.incrementAndGet();
-        }
+        openStatements.incrementAndGet();
         return proxy(PreparedStatement.class, statement, invocation -> {
             String method = invocation.getMethod().getName();
-            // JdbcTemplate's stream close uses Statement.getConnection(). Keep
-            // that identity equal to the transaction-bound observed connection.
             if (method.equals("getConnection")) {
                 return connection;
             }
-            if (method.equals("addBatch")) {
-                batchCount.incrementAndGet();
-            } else if (method.equals("executeBatch")) {
-                batchSizes.add(batchCount.getAndSet(0));
-            } else if (method.equals("executeQuery") && cursor) {
-                selects.incrementAndGet();
+            if (method.equals("executeQuery")) {
+                pendingReads.incrementAndGet();
                 fetchSizes.add(statement.getFetchSize());
                 autoCommit.add(connection.getAutoCommit());
             }
             var result = invocation.proceed();
-            if (method.equals("executeQuery") && cursor) {
+            if (method.equals("executeQuery")) {
                 return resultSet((ResultSet) result);
             }
-            if (method.equals("close") && cursor && closed.compareAndSet(false, true)) {
+            if (method.equals("close") && closed.compareAndSet(false, true)) {
                 openStatements.decrementAndGet();
             }
             return result;
@@ -95,6 +91,9 @@ final class BalanceUpdateJdbcProbe {
         openResults.incrementAndGet();
         return proxy(ResultSet.class, rows, invocation -> {
             var result = invocation.proceed();
+            if (invocation.getMethod().getName().equals("next") && Boolean.TRUE.equals(result)) {
+                cursorRows.incrementAndGet();
+            }
             if (invocation.getMethod().getName().equals("close") && closed.compareAndSet(false, true)) {
                 openResults.decrementAndGet();
                 closedResults.incrementAndGet();

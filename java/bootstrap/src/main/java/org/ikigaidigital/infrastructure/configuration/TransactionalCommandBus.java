@@ -4,7 +4,7 @@ import org.ikigaidigital.application.command.Command;
 import org.ikigaidigital.application.port.in.CommandBus;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** The complete command, including loading and locking, participates in one transaction. */
+/** The complete command, including aggregate loading and saving, participates in one transaction. */
 public final class TransactionalCommandBus implements CommandBus {
     private final CommandBus delegate;
     private final TransactionTemplate transaction;

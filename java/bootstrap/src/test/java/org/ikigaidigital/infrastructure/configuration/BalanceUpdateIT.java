@@ -94,18 +94,23 @@ class BalanceUpdateIT {
                 """);
         var failingRepository = new TimeDepositRepositoryPort() {
             @Override
-            public Stream<TimeDeposit> streamPending() {
+            public Stream<Integer> streamPending() {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
                 return balanceRepository.streamPending();
             }
 
             @Override
-            public void saveBatch(List<TimeDeposit> deposits) {
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                return balanceRepository.findAllById(ids);
+            }
+
+            @Override
+            public void saveAll(List<TimeDeposit> deposits) {
                 if (deposits.getFirst().getId() > 100) {
-                    balanceRepository.saveBatch(List.of(deposits.getFirst()));
-                    throw new IllegalStateException("Simulated failure while persisting the second page");
+                    balanceRepository.saveAll(List.of(deposits.getFirst()));
+                    throw new IllegalStateException("Simulated failure while persisting the second group");
                 }
-                balanceRepository.saveBatch(deposits);
+                balanceRepository.saveAll(deposits);
             }
         };
         var handler = new UpdateTimeDepositBalancesCommandHandler(new UpdateDepositBalancesService(failingRepository, calculator));
@@ -148,7 +153,7 @@ class BalanceUpdateIT {
     }
 
     @Test
-    void persistsEveryDepositAcrossMultiplePagesExactlyOnce() {
+    void persistsEveryDepositAcrossMultipleSaveGroupsExactlyOnce() {
         jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
         jdbc.execute("""
                 INSERT INTO "timeDeposits" (id, "planType", balance, days)
