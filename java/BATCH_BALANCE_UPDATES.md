@@ -37,7 +37,7 @@ unrounded final double balance are preserved for API and direct callers alike.
   execution; the reservation commits before worker submission. Audit transactions are
   independent of the balance transaction and survive its rollback.
 - The domain model and application service contain no framework annotations.
-  Bootstrap's `@Transactional` decorator covers the ID cursor, aggregate loading, and every save,
+  The runtime adapter's `@Transactional` decorator covers the ID cursor, aggregate loading, and every save,
   including direct calls to the inbound use case.
 - `TimeDepositBalanceJdbcRepository` extends `CrudRepository` and exposes an ID-only
   `streamAllIds()` query: `SELECT id FROM "timeDeposits" ORDER BY id`.

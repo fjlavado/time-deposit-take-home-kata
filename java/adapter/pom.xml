@@ -13,5 +13,6 @@
     <modules>
         <module>adapter-persistence</module>
         <module>adapter-web</module>
+        <module>adapter-runtime</module>
     </modules>
 </project>

@@ -7,7 +7,7 @@ import org.ikigaidigital.services.TimeDepositCalculator;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Framework-free orchestration; bootstrap decorates this use case with a transaction. */
+/** Framework-free orchestration; a runtime adapter decorates this use case with a transaction. */
 public final class UpdateDepositBalancesService implements UpdateDepositBalancesUseCase {
     public static final int BATCH_SIZE = 100;
 

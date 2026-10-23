@@ -1,5 +1,16 @@
 # Doodle-Inspired Hexagonal Refactoring Plan
 
+## Current ownership correction — 2026-10-23
+
+The historical steps below originally placed runtime implementations in bootstrap.
+The stricter follow-up moves repository ports, pagination and execution state to
+application, and makes `BackgroundBalanceUpdateJob` framework-free there.
+`adapter-runtime` owns executor submission and transactional decorators;
+`adapter-persistence` owns independent execution-audit transactions; `adapter-web`
+owns CORS policy. Bootstrap is composition/lifecycle only. The calculator remains
+a plain domain object and is not registered as a Spring bean. ArchUnit now targets
+the actual `services.interest` strategy package and enforces these boundaries.
+
 This completed plan records the original refactor. The later domain consolidation
 moved shared sources/tests from `java/src/` into `java/domain/src/`, removed `legacy`,
 and replaced duplicate interest policies with the shared Strategy implementation.

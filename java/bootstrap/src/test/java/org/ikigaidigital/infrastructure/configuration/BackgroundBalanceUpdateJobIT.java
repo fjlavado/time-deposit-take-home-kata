@@ -3,6 +3,9 @@ package org.ikigaidigital.infrastructure.configuration;
 import org.ikigaidigital.application.command.StartBalanceUpdateJobCommand;
 import org.ikigaidigital.application.command.handler.StartBalanceUpdateJobCommandHandler;
 import org.ikigaidigital.application.job.BalanceUpdateJobResult;
+import org.ikigaidigital.application.job.BalanceUpdateExecutionStatus;
+import org.ikigaidigital.application.job.BackgroundBalanceUpdateJob;
+import org.ikigaidigital.infrastructure.execution.ExecutorBackgroundTaskExecutor;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
 import org.ikigaidigital.domain.interest.TimeDeposit;
@@ -19,6 +22,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -26,6 +30,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -55,7 +61,7 @@ class BackgroundBalanceUpdateJobIT {
     @Autowired BalanceUpdateExecutionRepository executions;
     @Autowired TimeDepositRepositoryPort deposits;
     @Autowired UpdateDepositBalancesUseCase useCase;
-    @Autowired TimeDepositCalculator calculator;
+    private final TimeDepositCalculator calculator = new TimeDepositCalculator();
     @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
@@ -186,6 +192,30 @@ class BackgroundBalanceUpdateJobIT {
     }
 
     @Test
+    void admissionAndAuditCommitIndependentlyOfARollingBackCallerTransaction() {
+        var queued = new ConcurrentLinkedQueue<Runnable>();
+        var id = new AtomicReference<UUID>();
+        var caller = new TransactionTemplate(transactions);
+        caller.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+
+        assertThatThrownBy(() -> caller.executeWithoutResult(tx -> {
+            var result = job(queued::add, useCase).start();
+            id.set(result.jobId());
+            assertThat(result.status()).isEqualTo(BalanceUpdateJobResult.Status.STARTED);
+            executions.update(id.get(), BalanceUpdateExecutionStatus.FAILED, Instant.now());
+            assertThat(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())
+                    .isEqualTo(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+            jdbc.update("UPDATE \"timeDeposits\" SET balance = 999 WHERE id = 1");
+            throw new IllegalStateException("Roll back the caller, not its committed audit");
+        })).isInstanceOf(IllegalStateException.class);
+
+        assertThat(status(id.get())).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 1", Double.class))
+                .isEqualTo(1000);
+        assertThat(queued).hasSize(1);
+    }
+
+    @Test
     void executorRejectionRecordsFailureAndReleasesDatabaseReservation() {
         var rejected = job(task -> { throw new RejectedExecutionException("Stopped executor"); }, useCase);
         assertThatThrownBy(rejected::start).isInstanceOf(RejectedExecutionException.class);
@@ -195,10 +225,7 @@ class BackgroundBalanceUpdateJobIT {
     }
 
     private BackgroundBalanceUpdateJob job(Executor executor, UpdateDepositBalancesUseCase balances) {
-        var logTransactions = new TransactionTemplate(transactions);
-        logTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        logTransactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
-        return new BackgroundBalanceUpdateJob(executor, balances, executions, logTransactions);
+        return new BackgroundBalanceUpdateJob(new ExecutorBackgroundTaskExecutor(executor), balances, executions);
     }
 
     private String status(UUID id) {

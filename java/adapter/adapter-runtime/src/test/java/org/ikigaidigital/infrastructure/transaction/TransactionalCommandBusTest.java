@@ -1,4 +1,4 @@
-package org.ikigaidigital.infrastructure.configuration;
+package org.ikigaidigital.infrastructure.transaction;
 
 import org.ikigaidigital.application.command.StartBalanceUpdateJobCommand;
 import org.ikigaidigital.application.command.UpdateTimeDepositBalancesCommand;

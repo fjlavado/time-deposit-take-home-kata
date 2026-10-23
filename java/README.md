@@ -7,16 +7,15 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 ## Architecture
 
 ```text
-                     bootstrap (Spring wiring + command transaction)
-                        /                               \
-            adapter-web                           adapter-persistence
-                 |                                       |
-          CommandBus / QueryBus ports                    |
-                 |                                       |
-          typed requests -> handlers                     |
-                 +----------> domain <--------------------+
-                            models, strategies,
-                            outbound ports
+                    bootstrap (composition and lifecycle)
+                   /                |                  \
+           adapter-web       adapter-runtime      adapter-persistence
+                   \                |                  /
+                    application (inbound/outbound ports,
+                     handlers, jobs and pagination)
+                                    |
+                             domain (models,
+                         calculator and strategies)
 ```
 
 | Module | Responsibility |
@@ -24,22 +23,23 @@ and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md)
 | `domain` | Single deposit model, calculator service, immutable plan/balance/withdrawal values and sealed interest strategies; no framework dependencies |
 | `application` | Typed commands/queries, inbound bus ports, outbound repository ports, pagination contracts, job execution state, synchronous dispatchers and handlers; depends only on domain |
 | `adapter` | Maven parent/aggregator for all adapter modules |
-| `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, domain repository adapter and bidirectional mapper, aggregate persistence, Flyway SQL |
-| `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, dedicated API mapper, contract tests |
-| `bootstrap` | Executable application, explicit adapter/handler/bus wiring, background executor, transaction boundaries, architecture/end-to-end tests |
+| `adapter/adapter-persistence` | Spring Data JDBC table models/repositories, application repository-port adapters, bidirectional mapper, independent audit transactions, aggregate persistence and Flyway SQL |
+| `adapter/adapter-web` | OpenAPI-generated API interface and response DTOs, bus-delegating controller, API mapper, CORS policy and contract tests |
+| `adapter/adapter-runtime` | Executor-backed task submission and transactional use-case/command-bus decorators; depends only inward on application |
+| `bootstrap` | Executable application, explicit component wiring, managed-resource lifecycle and architecture/end-to-end tests |
 
-ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controllers' use of bus ports rather than handlers/dispatch implementations, command/query handler separation, bootstrap ownership of transaction management, and confinement of strategy details to domain. The domain layer includes `org.ikigaidigital.domain..`, `org.ikigaidigital.interest..`, and `org.ikigaidigital.services..`. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar.
+ArchUnit verifies framework-free core modules, inward dependencies, adapter isolation, controller bus-port use, command/query handler separation, infrastructure-owned transaction management, configuration-only bootstrap classes, and confinement of `services.interest` strategy details to domain. The domain layer includes `org.ikigaidigital.domain..` and `org.ikigaidigital.services..`. Maven separates compilation boundaries; only bootstrap produces an executable Boot jar. The calculator is a plain domain object constructed when composing the update service, not a Spring bean.
 
 ### Command and query flow
 
 This structure adopts Doodle's synchronous command/query bus pattern within the existing module boundaries.
 
-- **POST**: `TimeDepositController` dispatches `StartBalanceUpdateJobCommand` through `CommandBus`. Its handler invokes the `BalanceUpdateJob` port. Bootstrap's implementation reserves a UUID execution in the database, commits that reservation, and submits work to a managed executor. POST returns **202 STARTED**, or **409 RUNNING** with the active UUID. The worker invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes all deposit IDs in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, applies the unchanged calculator once at each deposit's current age, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one worker-thread transaction; the ID cursor closes before commit. See [background jobs](BACKGROUND_BALANCE_UPDATES.md) and [bulk update semantics](BATCH_BALANCE_UPDATES.md).
-- **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page of deposits including withdrawals. The framework-free repository port uses domain `PageRequestVO` and `Page<TimeDeposit>` values; only the persistence adapter translates them to/from Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models, and the controller returns the generated page envelope. Query dispatch does not start a transaction. GET sees committed balances; a GET immediately after acceptance may still show the previous balances.
+- **POST**: `TimeDepositController` dispatches `StartBalanceUpdateJobCommand` through `CommandBus`. Its handler invokes the `BalanceUpdateJob` port. Application's framework-free `BackgroundBalanceUpdateJob` reserves a UUID through the execution-repository port, then submits work through `BackgroundTaskExecutor`. The persistence decorator commits reservation before returning, and the runtime adapter submits to the managed executor. POST returns **202 STARTED**, or **409 RUNNING** with the active UUID. The worker invokes `UpdateDepositBalancesUseCase`, decorated by the runtime adapter's `@Transactional` implementation. The service consumes all deposit IDs in groups of 100, loads complete aggregates through inherited `CrudRepository.findAllById()`, applies the unchanged calculator once, and persists through inherited `CrudRepository.saveAll()`. All groups share one worker-thread transaction; the ID cursor closes before commit. See [background jobs](BACKGROUND_BALANCE_UPDATES.md) and [bulk update semantics](BATCH_BALANCE_UPDATES.md).
+- **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page including withdrawals. The application-owned repository port uses `application.pagination.PageRequestVO` and `Page<TimeDeposit>`; only persistence translates Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models. Query dispatch does not start a transaction. GET sees committed balances; immediately after acceptance it may still show previous balances.
 
 The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`. Job submission returns a framework-free `BalanceUpdateJobResult`; the internal synchronous `UpdateTimeDepositBalancesCommand` retains `Void` for direct processing callers. The runtime registry casts are confined to the dispatchers. The transactional bus bypasses its outer transaction for job submission, which owns short audit transactions instead; this avoids holding a request-thread connection during admission.
 
-`UseCaseConfiguration` registers processing/query handlers and constructs both buses. `BalanceUpdateJobConfiguration` registers the start handler, database-backed runner, and managed single-thread executor, whose shutdown drains work before the datasource closes. `PersistenceAdapterConfiguration` explicitly enables Spring Data JDBC repository scanning and supplies repository adapters and the persistence mapper, while `WebAdapterConfiguration` supplies the controller and API mapper. Spring collects registered handlers for each bus. To extend application behavior, add a typed request and handler and register the handler in bootstrap; interest-rule extensions use `InterestStrategy`.
+`UseCaseConfiguration` registers handlers and composes the services, decorators and buses. `BalanceUpdateJobConfiguration` wires the application job, runtime executor adapter and managed single-thread executor, whose shutdown drains work before the datasource closes. `PersistenceAdapterConfiguration` enables JDBC repository scanning and wires persistence adapters, including `TransactionalBalanceUpdateExecutionRepository`. `WebAdapterConfiguration` imports the controller and web-owned `SwaggerCorsConfiguration` and supplies the API mapper. Spring collects registered handlers for each bus. Interest-rule extensions use `InterestStrategy`.
 
 ### Spring Data JDBC persistence
 
@@ -52,7 +52,7 @@ The persistence adapter follows Doodle's separation of annotated table models, S
 - `JdbcTimeDepositRepository` implements the read-only `TimeDepositRepository` port's `search(PageRequestVO)` and delegates aggregate conversion to `TimeDepositPersistenceMapper`. Loaded deposits and mapped withdrawals are sorted by ID in memory within the bounded page; selection and pagination happen in the database.
 - `TimeDepositRepositoryAdapter` implements `TimeDepositRepositoryPort` for balance processing. `streamAllIds()` selects every deposit ID, ordered by ID. The service buffers at most 100 IDs and calls `findAllById(ids)`; the adapter uses inherited Spring Data loading and maps complete aggregates, including withdrawals, in ID order. Only the current group is materialized.
 - `saveAll()` maps complete domain snapshots back to table records, preserving withdrawal IDs/amounts/dates, plan, age, and loaded version, and calls inherited `CrudRepository.saveAll()`. `TimeDepositTable.version` uses `@Version`, so Spring Data JDBC performs optimistic version checking and increments. A stale or deleted row aborts the whole transaction. Aggregate saves may delete/reinsert mapped child rows; the mapper carries the full withdrawal collection so its persisted data is preserved.
-- Bootstrap uses `spring-boot-starter-data-jdbc` and explicit `@EnableJdbcRepositories` because its application class is outside the persistence package. Its JDBC template sets fetch size 100; together with autocommit disabled by the outer transaction, this enables PostgreSQL server-side fetching of IDs. Bootstrap also enables single-query aggregate loading and owns the transaction boundary.
+- Bootstrap uses `spring-boot-starter-data-jdbc` and explicit `@EnableJdbcRepositories` because its application class is outside the persistence package. Its JDBC template sets fetch size 100; together with autocommit disabled by the runtime decorator's transaction, this enables PostgreSQL server-side fetching of IDs. Bootstrap configures single-query loading and wires transaction decorators; the decorators live in adapters.
 
 PostgreSQL integration tests instantiate actual Spring Data repository proxies and count prepared and plain JDBC read statements, including the total-count query. They cover bounded query counts, complete withdrawal collections, full/partial/out-of-range pages, and empty results. Their direct JDBC access is used for fixture setup and independent database assertions. Existing build, database configuration, and startup commands below also apply to this implementation; Flyway remains responsible for schema evolution.
 

@@ -14,6 +14,20 @@ Persistence now depends inward on application; web is forbidden from accessing
 outbound ports. `mvn -q clean test` and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed before committing.
 
+The runtime checkpoint extracts executor submission and transaction decorators
+into `adapter-runtime`, independent audit transactions into persistence, CORS
+policy into web, and framework-free job orchestration into application. Bootstrap
+composes a plain calculator rather than registering a calculator bean. Architecture
+checks cover the real strategy package, configuration-only bootstrap and adapter
+isolation. PostgreSQL coverage additionally proves that admission/audit commits
+survive a caller rollback and that no calculator bean exists.
+
+`mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q -Pperformance verify` passed,
+including all nine architecture checks and 36 PostgreSQL integration cases with
+no failures, errors or skips. The optional performance module compiles/packages;
+the historical load evaluation was not rerun for this structural refactor.
+
 ## Repeatable performance fixtures
 
 OpenCode (`openai/gpt-6.1-sol`) implemented the user-approved performance plan

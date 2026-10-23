@@ -1,15 +1,15 @@
 package org.ikigaidigital.infrastructure.configuration;
 
 import org.ikigaidigital.application.command.handler.StartBalanceUpdateJobCommandHandler;
+import org.ikigaidigital.application.job.BackgroundBalanceUpdateJob;
 import org.ikigaidigital.application.port.in.BalanceUpdateJob;
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
 import org.ikigaidigital.application.port.out.BalanceUpdateExecutionRepository;
+import org.ikigaidigital.application.port.out.BackgroundTaskExecutor;
+import org.ikigaidigital.infrastructure.execution.ExecutorBackgroundTaskExecutor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -23,12 +23,14 @@ public class BalanceUpdateJobConfiguration {
     }
 
     @Bean
-    BalanceUpdateJob balanceUpdateJob(ExecutorService balanceUpdateExecutor, UpdateDepositBalancesUseCase balances,
-                                      BalanceUpdateExecutionRepository executions, PlatformTransactionManager transactions) {
-        var logTransactions = new TransactionTemplate(transactions);
-        logTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        logTransactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
-        return new BackgroundBalanceUpdateJob(balanceUpdateExecutor, balances, executions, logTransactions);
+    BackgroundTaskExecutor backgroundTaskExecutor(ExecutorService balanceUpdateExecutor) {
+        return new ExecutorBackgroundTaskExecutor(balanceUpdateExecutor);
+    }
+
+    @Bean
+    BalanceUpdateJob balanceUpdateJob(BackgroundTaskExecutor executor, UpdateDepositBalancesUseCase balances,
+                                      BalanceUpdateExecutionRepository executions) {
+        return new BackgroundBalanceUpdateJob(executor, balances, executions);
     }
 
     @Bean

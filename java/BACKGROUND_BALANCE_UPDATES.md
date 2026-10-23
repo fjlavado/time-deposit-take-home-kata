@@ -47,7 +47,12 @@ GET remains the existing paginated deposit retrieval operation.
 ## HTTP contract and wiring
 
 `POST /time-deposits/balance-updates` dispatches `StartBalanceUpdateJobCommand`.
-The handler delegates to `BalanceUpdateJob`; bootstrap supplies the background runner.
+The handler delegates to `BalanceUpdateJob`; the framework-free application job
+orchestrates admission and execution through outbound ports. `adapter-runtime`
+implements `BackgroundTaskExecutor` and the transactional balance-use-case and
+command-bus decorators. `adapter-persistence` implements the execution repository;
+its decorator owns the short `REQUIRES_NEW` / `READ_COMMITTED` audit transactions.
+Bootstrap only composes these objects and manages the executor lifecycle.
 The command bus starts no outer transaction for this command, so a request does not
 hold a connection while reservation needs another one. The worker calls the existing
 transactional use case. The internal synchronous processing command remains available

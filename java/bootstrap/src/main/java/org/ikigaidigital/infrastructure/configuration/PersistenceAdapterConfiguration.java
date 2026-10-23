@@ -6,6 +6,7 @@ import org.ikigaidigital.application.port.out.BalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.JdbcBalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.JdbcTimeDepositRepository;
 import org.ikigaidigital.infrastructure.persistence.TimeDepositRepositoryAdapter;
+import org.ikigaidigital.infrastructure.persistence.TransactionalBalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositJdbcRepository;
 import org.ikigaidigital.infrastructure.persistence.repository.TimeDepositPageJdbcRepository;
@@ -17,6 +18,7 @@ import org.springframework.data.jdbc.repository.config.EnableJdbcRepositories;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 
@@ -25,8 +27,10 @@ import javax.sql.DataSource;
         jdbcOperationsRef = "depositJdbcOperations")
 public class PersistenceAdapterConfiguration {
     @Bean
-    BalanceUpdateExecutionRepository balanceUpdateExecutionRepository(JdbcTemplate jdbc) {
-        return new JdbcBalanceUpdateExecutionRepository(jdbc);
+    BalanceUpdateExecutionRepository balanceUpdateExecutionRepository(JdbcTemplate jdbc,
+                                                                      PlatformTransactionManager transactions) {
+        return new TransactionalBalanceUpdateExecutionRepository(
+                new JdbcBalanceUpdateExecutionRepository(jdbc), transactions);
     }
 
     @Bean

@@ -58,7 +58,8 @@ Operational instructions, this tracking document, demonstration SQL, and the AI-
 | `adapter` | None | Maven parent/aggregator for all adapter modules |
 | `adapter/adapter-persistence` | `application`, `domain` | Spring Data JDBC table records/repositories, application port adapters, domain mapper, versioned SQL migrations |
 | `adapter/adapter-web` | `application`, `domain` | OpenAPI-generated interface/response DTOs, bus-delegating controller, API mapper |
-| `bootstrap` | `domain`, `application`, both adapters | Composition root, transactional command-bus decorator, executable Boot application |
+| `adapter/adapter-runtime` | `application` | Executor-backed task submission and transaction decorators |
+| `bootstrap` | `domain`, `application`, all three adapters | Composition root, resource lifecycle and executable Boot application |
 
 Domain and application production code must not depend on frameworks. Application and adapters use the shared `org.ikigaidigital.domain.interest.TimeDeposit` model; the update handler invokes `org.ikigaidigital.services.TimeDepositCalculator` directly before saving balances. Strategy details remain encapsulated in domain. Plan arguments/getters use `PlanType`; HTTP and database names remain strings.
 

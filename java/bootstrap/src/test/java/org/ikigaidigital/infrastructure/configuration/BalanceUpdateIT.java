@@ -12,6 +12,7 @@ import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
 import org.ikigaidigital.application.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
+import org.ikigaidigital.infrastructure.transaction.TransactionalCommandBus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.ApplicationContext;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -54,7 +56,8 @@ class BalanceUpdateIT {
     @Autowired TimeDepositRepositoryPort balanceRepository;
     @Autowired QueryBus queries;
     @Autowired CommandBus commands;
-    @Autowired TimeDepositCalculator calculator;
+    private final TimeDepositCalculator calculator = new TimeDepositCalculator();
+    @Autowired ApplicationContext context;
     @Autowired PlatformTransactionManager transactions;
     @Autowired JdbcMappingContext mappingContext;
 
@@ -71,6 +74,7 @@ class BalanceUpdateIT {
 
     @Test
     void bootMigratesDatabaseAndWiresTransactionalCommandDispatch() {
+        assertThat(context.getBeansOfType(TimeDepositCalculator.class)).isEmpty();
         assertThat(mappingContext.isSingleQueryLoadingEnabled()).isTrue();
         commands.dispatch(new UpdateTimeDepositBalancesCommand());
 
