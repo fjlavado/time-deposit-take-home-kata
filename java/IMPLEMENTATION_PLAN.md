@@ -229,3 +229,20 @@ Verification passed on JDK 27 with release 25: **162 non-integration cases and
 29 PostgreSQL integration cases**, without failures, errors, or skips. The large
 fixture observes one ID-only cursor and 101 aggregate reads/save groups for 10,005
 deposits, with each group bounded to 100. Packaging succeeded.
+
+## Remove incremental processing — 2026-10-23
+
+The user explicitly superseded the fixed-period schedule and idempotent processing.
+
+- [x] Remove pending-interest scheduling, catch-up, and processing state from `TimeDeposit`.
+- [x] Stream every deposit ID and apply the unchanged calculator once per loaded group.
+- [x] Remove the watermark from JDBC table/domain mapping while retaining optimistic locking.
+- [x] Replace incremental/idempotency expectations with repeated-credit and current-age tests.
+- [x] Update OpenAPI to 4.0.0, current documentation, and agent guidance.
+- [x] Run `mvn -q clean test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`.
+
+Both commands passed on JDK 27 with release 25: **158 non-integration cases and
+28 PostgreSQL integration cases**, without failures, errors, or skips. Bounded ID
+streaming, withdrawal preservation, cursor closure, rollback, and deterministic
+HTTP optimistic-conflict coverage remain in place. The unused V2 watermark column
+is left for a separate forward-migration checkpoint.

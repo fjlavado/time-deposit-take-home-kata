@@ -13,7 +13,6 @@ import java.util.Set;
 @Table("timeDeposits")
 public record TimeDepositTable(@Id Integer id, @Column("planType") String planType,
                                BigDecimal balance, int days,
-                               @Column("last_processed_days") int lastProcessedDays,
                                @Version Long version,
                                @MappedCollection(idColumn = "timeDepositId") Set<WithdrawalTable> withdrawals) {
     public TimeDepositTable {

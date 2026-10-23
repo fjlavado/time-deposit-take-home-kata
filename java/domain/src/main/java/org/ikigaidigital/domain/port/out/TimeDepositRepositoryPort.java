@@ -7,8 +7,8 @@ import java.util.stream.Stream;
 
 /** Aggregate persistence; the caller owns a transaction across loading and all saves. */
 public interface TimeDepositRepositoryPort {
-    /** Stream pending IDs in order. The caller must close the stream within its transaction. */
-    Stream<Integer> streamPending();
+    /** Stream all deposit IDs in order. The caller must close the stream within its transaction. */
+    Stream<Integer> streamAllIds();
 
     /** Load a bounded group of complete aggregate snapshots, including withdrawals, ordered by ID. */
     List<TimeDeposit> findAllById(List<Integer> ids);

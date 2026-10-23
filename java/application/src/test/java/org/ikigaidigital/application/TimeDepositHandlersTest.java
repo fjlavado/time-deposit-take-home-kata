@@ -109,8 +109,7 @@ class TimeDepositHandlersTest {
 
     private static TimeDeposit deposit(int id, String plan, int days) {
         return new TimeDeposit(id, new PlanType(plan), 1000.0, days,
-                List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))),
-                days == 366 ? 365 : 0, 0);
+                List.of(new Withdrawal(id, new BigDecimal("12.34"), LocalDate.of(2026, 1, 2))));
     }
 
     private record DepositMetadata(int id, PlanType planType, int days, List<Withdrawal> withdrawals) {
@@ -139,8 +138,8 @@ class TimeDepositHandlersTest {
         }
 
         @Override
-        public Stream<Integer> streamPending() {
-            return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays()).map(TimeDeposit::getId);
+        public Stream<Integer> streamAllIds() {
+            return deposits.stream().map(TimeDeposit::getId);
         }
 
         @Override

@@ -22,8 +22,8 @@ public final class TimeDepositRepositoryAdapter implements TimeDepositRepository
     }
 
     @Override
-    public Stream<Integer> streamPending() {
-        return deposits.streamPending();
+    public Stream<Integer> streamAllIds() {
+        return deposits.streamAllIds();
     }
 
     @Override

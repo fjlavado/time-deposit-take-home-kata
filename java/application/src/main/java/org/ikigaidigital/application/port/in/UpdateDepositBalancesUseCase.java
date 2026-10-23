@@ -1,6 +1,6 @@
 package org.ikigaidigital.application.port.in;
 
 public interface UpdateDepositBalancesUseCase {
-    /** Process all pending monthly periods atomically; repeated calls at the same age are no-ops. */
+    /** Apply the calculator once to every deposit and persist all groups atomically. */
     void updateBalances();
 }

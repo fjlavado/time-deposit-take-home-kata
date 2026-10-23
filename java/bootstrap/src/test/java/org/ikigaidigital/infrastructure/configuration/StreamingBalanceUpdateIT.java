@@ -52,8 +52,8 @@ import static org.assertj.core.api.Assertions.within;
         "spring.datasource.hikari.maximum-pool-size=2", "spring.datasource.hikari.connection-timeout=3000"
 })
 @Testcontainers
-@Import(IncrementalBalanceUpdateIT.ProbeConfiguration.class)
-class IncrementalBalanceUpdateIT {
+@Import(StreamingBalanceUpdateIT.ProbeConfiguration.class)
+class StreamingBalanceUpdateIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.6-alpine");
     private static final BalanceUpdateJdbcProbe JDBC_PROBE = new BalanceUpdateJdbcProbe();
@@ -83,11 +83,11 @@ class IncrementalBalanceUpdateIT {
     }
 
     @Test
-    void loadsPendingAggregatesWithTheirOwnWithdrawalsInIdOrder() {
+    void loadsAllAggregatesWithTheirOwnWithdrawalsInIdOrder() {
         jdbc.execute("""
-                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days)
-                VALUES (3, 'premium', 3000, 46, 0), (1, 'basic', 1000, 31, 0),
-                       (2, 'student', 2000, 31, 31)
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                VALUES (3, 'premium', 3000, 46), (1, 'basic', 1000, 31),
+                       (2, 'student', 2000, 30)
                 """);
         jdbc.execute("""
                 INSERT INTO withdrawals (id, "timeDepositId", amount, date)
@@ -95,9 +95,9 @@ class IncrementalBalanceUpdateIT {
                        (21, 2, 9.00, DATE '2026-01-04'), (31, 3, 7.89, DATE '2026-01-05')
                 """);
 
-        var deposits = loadPendingSnapshots();
+        var deposits = loadSnapshots();
 
-        assertThat(deposits).extracting(TimeDeposit::getId).containsExactly(1, 3);
+        assertThat(deposits).extracting(TimeDeposit::getId).containsExactly(1, 2, 3);
         assertThat(deposits.getFirst().getWithdrawals()).extracting(withdrawal -> withdrawal.id())
                 .containsExactly(11, 12);
         assertThat(deposits.getFirst().getWithdrawals().getFirst().amount()).isEqualByComparingTo("12.3456");
@@ -110,30 +110,26 @@ class IncrementalBalanceUpdateIT {
     }
 
     @Test
-    void calculatesOnlyNewMonthlyPeriodsForEveryPlanAndEligibilityBoundary() {
+    void calculatesOnceAtCurrentAgeForEveryPlanAndEligibilityBoundary() {
         jdbc.execute("""
-                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days)
-                VALUES (1, 'basic', 1000, 30, 0), (2, 'basic', 1000, 31, 0),
-                       (3, 'premium', 1000, 45, 0), (4, 'premium', 1000, 46, 0),
-                       (5, 'student', 1000, 365, 331), (6, 'student', 1000, 366, 365),
-                       (7, 'unknown', 1000, 400, 0)
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                VALUES (1, 'basic', 1000, 30), (2, 'basic', 1000, 31),
+                       (3, 'premium', 1000, 45), (4, 'premium', 1000, 46),
+                       (5, 'student', 1000, 365), (6, 'student', 1000, 366),
+                       (7, 'unknown', 1000, 400)
                 """);
         jdbc.execute("INSERT INTO withdrawals (\"timeDepositId\", amount, date) VALUES (2, 12.34, DATE '2026-01-02')");
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals");
 
         useCase.updateBalances();
         assertThat(balances()).containsExactly(1000.0, 1000.83, 1000.0, 1004.17, 1002.5, 1000.0, 1000.0);
-        jdbc.execute("UPDATE \"timeDeposits\" SET days = 60, version = version + 1 WHERE id = 2");
-        useCase.updateBalances();
-        assertThat(balance(2)).isEqualTo(1000.83);
-
         jdbc.execute("UPDATE \"timeDeposits\" SET days = 91, version = version + 1 WHERE id = 2");
         jdbc.execute("UPDATE \"timeDeposits\" SET days = 106, version = version + 1 WHERE id = 4");
         jdbc.execute("UPDATE \"timeDeposits\" SET days = 400, version = version + 1 WHERE id IN (5, 6)");
         useCase.updateBalances();
 
-        assertThat(balance(2)).isCloseTo(1002.49, within(1e-9));
-        assertThat(balance(4)).isCloseTo(1012.55, within(1e-9));
+        assertThat(balance(2)).isCloseTo(1001.66, within(1e-9));
+        assertThat(balance(4)).isCloseTo(1008.35, within(1e-9));
         assertThat(balance(5)).isEqualTo(1002.5);
         assertThat(balance(6)).isEqualTo(1000.0);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals")).isEqualTo(withdrawals);
@@ -141,31 +137,31 @@ class IncrementalBalanceUpdateIT {
     }
 
     @Test
-    void catchesUpAnExpiredStudentsEarlierPeriodsButNeverCreditsAfterOneYear() {
+    void expiredStudentReceivesNoCatchUpInterest() {
         jdbc.execute("INSERT INTO \"timeDeposits\" (id, \"planType\", balance, days) VALUES (1, 'student', 1000, 400)");
         useCase.updateBalances();
-        assertThat(balance(1)).isCloseTo(1030.42, within(1e-9));
-        assertThat(jdbc.queryForObject("SELECT last_processed_days FROM \"timeDeposits\"", Integer.class)).isEqualTo(400);
+        assertThat(balance(1)).isEqualTo(1000.0);
         assertReleased();
     }
 
     @Test
-    void secondInvocationChangesNeitherBalancesNorWatermarksNorVersions() {
+    void secondInvocationCreditsInterestAgainWithoutChangingDaysOrWithdrawals() {
         insertBasic(205);
         insertWithdrawals();
         useCase.updateBalances();
-        var before = jdbc.queryForList("SELECT * FROM \"timeDeposits\" ORDER BY id");
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
         observed.reset();
         JDBC_PROBE.reset();
 
         useCase.updateBalances();
 
-        assertThat(jdbc.queryForList("SELECT * FROM \"timeDeposits\" ORDER BY id")).isEqualTo(before);
+        assertThat(balances()).allSatisfy(balance -> assertThat(balance).isCloseTo(1001.66, within(1e-9)));
+        assertThat(jdbc.queryForList("SELECT days FROM \"timeDeposits\"", Integer.class)).containsOnly(31);
+        assertThat(jdbc.queryForList("SELECT version FROM \"timeDeposits\"", Long.class)).containsOnly(2L);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
-        assertThat(observed.savedGroupSizes).isEmpty();
-        assertThat(observed.loadedGroupSizes).isEmpty();
-        assertThat(JDBC_PROBE.pendingReads).hasValue(1);
+        assertThat(observed.savedGroupSizes).containsExactly(100, 100, 5);
+        assertThat(observed.loadedGroupSizes).containsExactly(100, 100, 5);
+        assertThat(JDBC_PROBE.idReads).hasValue(1);
         assertThat(JDBC_PROBE.closedResults).hasValue(1);
         assertReleased();
     }
@@ -187,7 +183,7 @@ class IncrementalBalanceUpdateIT {
 
         useCase.updateBalances();
 
-        assertThat(JDBC_PROBE.pendingReads).hasValue(1);
+        assertThat(JDBC_PROBE.idReads).hasValue(1);
         assertThat(JDBC_PROBE.aggregateReads).hasValue(101);
         assertThat(JDBC_PROBE.fetchSizes).containsExactly(100);
         assertThat(JDBC_PROBE.autoCommit).containsExactly(false);
@@ -199,7 +195,7 @@ class IncrementalBalanceUpdateIT {
         assertThat(observed.loadedGroupSizes).isEqualTo(observed.savedGroupSizes);
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM "timeDeposits"
-                WHERE balance = 1000.83 AND last_processed_days = 31 AND version = 1
+                WHERE balance = 1000.83 AND days = 31 AND version = 1
                 """, Integer.class)).isEqualTo(10005);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
         assertReleased();
@@ -212,7 +208,7 @@ class IncrementalBalanceUpdateIT {
             useCase.updateBalances();
             assertReleased();
         }
-        assertThat(observed.savedGroupSizes).containsExactly(1);
+        assertThat(observed.savedGroupSizes).containsExactly(1, 1, 1, 1, 1, 1, 1, 1);
         assertThat(JDBC_PROBE.closedResults).hasValue(8);
         assertThat(observed.closedDuringTransaction).hasValue(8);
     }
@@ -275,11 +271,8 @@ class IncrementalBalanceUpdateIT {
         insertWithdrawals();
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
         var transaction = new TransactionTemplate(transactions);
-        var snapshots = loadPendingSnapshots();
-        snapshots.forEach(deposit -> {
-            deposit.setBalance(9999.0);
-            deposit.markCalculationProcessed();
-        });
+        var snapshots = loadSnapshots();
+        snapshots.forEach(deposit -> deposit.setBalance(9999.0));
         jdbc.execute("UPDATE \"timeDeposits\" SET version = version + 1 WHERE id = 2");
 
         assertThatThrownBy(() -> transaction.executeWithoutResult(status -> observed.saveAll(snapshots)))
@@ -294,11 +287,8 @@ class IncrementalBalanceUpdateIT {
     void deletedAggregateFailsSaveAllAndRollsBackEarlierUpdates() {
         insertBasic(2);
         var transaction = new TransactionTemplate(transactions);
-        var snapshots = loadPendingSnapshots();
-        snapshots.forEach(deposit -> {
-            deposit.setBalance(9999.0);
-            deposit.markCalculationProcessed();
-        });
+        var snapshots = loadSnapshots();
+        snapshots.forEach(deposit -> deposit.setBalance(9999.0));
         jdbc.execute("DELETE FROM \"timeDeposits\" WHERE id = 2");
 
         assertThatThrownBy(() -> transaction.executeWithoutResult(status -> observed.saveAll(snapshots)))
@@ -311,8 +301,8 @@ class IncrementalBalanceUpdateIT {
     @Test
     void savesCompleteAggregateWithoutRoundingBalancesOrLosingMetadataAndWithdrawals() {
         jdbc.execute("""
-                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days, version)
-                VALUES (1, 'basic', 12.345, 31, 10, 7)
+                INSERT INTO "timeDeposits" (id, "planType", balance, days, version)
+                VALUES (1, 'basic', 12.345, 31, 7)
                 """);
         jdbc.execute("""
                 INSERT INTO withdrawals (id, "timeDepositId", amount, date)
@@ -322,16 +312,14 @@ class IncrementalBalanceUpdateIT {
         double balance = 12.345 + 0.01;
 
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
-            var snapshot = loadPendingSnapshots().getFirst();
+            var snapshot = loadSnapshots().getFirst();
             snapshot.setBalance(balance);
-            snapshot.markCalculationProcessed();
             observed.saveAll(List.of(snapshot));
         });
 
         var actual = aggregates.findById(1).orElseThrow();
         assertThat(actual.planType()).isEqualTo("basic");
         assertThat(actual.days()).isEqualTo(31);
-        assertThat(actual.lastProcessedDays()).isEqualTo(31);
         assertThat(actual.version()).isEqualTo(8L);
         assertThat(actual.withdrawals()).hasSize(2).filteredOn(withdrawal -> withdrawal.id() == 11)
                 .singleElement().satisfies(withdrawal -> {
@@ -358,7 +346,7 @@ class IncrementalBalanceUpdateIT {
     }
 
     @Test
-    void concurrentHttpTriggersReturnOneSuccessAndOneConflictThenRetryIsANoop() throws Exception {
+    void concurrentHttpTriggersReturnOneSuccessAndOneConflictThenRetryCalculatesAgain() throws Exception {
         insertBasic(205);
         insertWithdrawals();
         var withdrawals = jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id");
@@ -378,9 +366,10 @@ class IncrementalBalanceUpdateIT {
         assertThat(observed.closedDuringTransaction).hasValue(2);
         assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
         assertReleased();
-        var before = jdbc.queryForList("SELECT * FROM \"timeDeposits\" ORDER BY id");
         assertThat(postUpdate()).isEqualTo(204);
-        assertThat(jdbc.queryForList("SELECT * FROM \"timeDeposits\" ORDER BY id")).isEqualTo(before);
+        assertThat(balances()).allSatisfy(balance -> assertThat(balance).isCloseTo(1001.66, within(1e-9)));
+        assertThat(jdbc.queryForList("SELECT version FROM \"timeDeposits\"", Long.class)).containsOnly(2L);
+        assertThat(jdbc.queryForList("SELECT * FROM withdrawals ORDER BY id")).isEqualTo(withdrawals);
         assertReleased();
     }
 
@@ -416,9 +405,9 @@ class IncrementalBalanceUpdateIT {
                 """, count);
     }
 
-    private List<TimeDeposit> loadPendingSnapshots() {
+    private List<TimeDeposit> loadSnapshots() {
         return new TransactionTemplate(transactions).execute(status -> {
-            try (var ids = observed.streamPending()) {
+            try (var ids = observed.streamAllIds()) {
                 return observed.findAllById(ids.toList());
             }
         });
@@ -440,7 +429,7 @@ class IncrementalBalanceUpdateIT {
     }
 
     private void assertUnchanged() {
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE balance <> 1000 OR last_processed_days <> 0 OR version <> 0", Integer.class))
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE balance <> 1000 OR version <> 0", Integer.class))
                 .isZero();
     }
 
@@ -508,9 +497,9 @@ class IncrementalBalanceUpdateIT {
         }
 
         @Override
-        public Stream<Integer> streamPending() {
+        public Stream<Integer> streamAllIds() {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
-            return delegate.streamPending().peek(id -> {
+            return delegate.streamAllIds().peek(id -> {
                 if (failOnRead && id == 101) {
                     throw new IllegalStateException("read failure");
                 }

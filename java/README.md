@@ -34,7 +34,7 @@ ArchUnit verifies framework-free core modules, inward dependencies, adapter isol
 
 This structure adopts Doodle's synchronous command/query bus pattern within the existing module boundaries.
 
-- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through `CommandBus`. Its handler invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes an ID-only pending-deposit stream in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, credits unprocessed 30-day periods through the unchanged calculator, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one transaction; the ID cursor closes before commit, which completes before the HTTP response. See [incremental update semantics](BATCH_BALANCE_UPDATES.md).
+- **POST**: `TimeDepositController` dispatches `UpdateTimeDepositBalancesCommand` through `CommandBus`. Its handler invokes `UpdateDepositBalancesUseCase`; bootstrap decorates `UpdateDepositBalancesService` with `@Transactional`. The service consumes all deposit IDs in groups of 100, loads each group's complete aggregates with inherited `CrudRepository.findAllById()`, applies the unchanged calculator once at each deposit's current age, and persists each group through inherited `CrudRepository.saveAll()`. All groups share one transaction; the ID cursor closes before commit, which completes before the HTTP response. See [bulk update semantics](BATCH_BALANCE_UPDATES.md).
 - **GET**: the controller dispatches `RetrieveTimeDepositsQuery(page, size)` through `QueryBus`. `DefaultQueryBus` selects `RetrieveTimeDepositsQueryHandler`, which requests a single page of deposits including withdrawals. The framework-free repository port uses domain `PageRequestVO` and `Page<TimeDeposit>` values; only the persistence adapter translates them to/from Spring Data paging. `TimeDepositApiMapper` converts deposits to generated response models, and the controller returns the generated page envelope. Query dispatch does not start a transaction. Reads use the same persisted model, so a subsequent GET sees a completed POST's updates.
 
 The buses associate each request class with one handler in a private immutable registry. Duplicate registrations fail at construction; an unregistered request fails at dispatch. Request result types are carried by `Command<R>` and `Query<R>`; the update uses `Void` because it has no response payload. The runtime registry casts are confined to the dispatchers.
@@ -50,7 +50,7 @@ The persistence adapter follows Doodle's separation of annotated table models, S
 - `repository/TimeDepositPageJdbcRepository` extends `PagingAndSortingRepository<TimeDepositIdTable, Integer>`. The ID-only record maps the same table and needs no additional schema. Its inherited `findAll(Pageable)` performs database pagination ordered by ID; the aggregate repository's inherited `findAllById(ids)` loads just that page's deposits and mapped withdrawals.
 - Bootstrap enables [single-query loading](https://docs.spring.io/spring-data/relational/reference/jdbc/entity-persistence.html#jdbc.loading-aggregates) on `JdbcMappingContext` before initialization. Spring Data JDBC 4.1.1's direct paged aggregate read falls back to extra child queries. Paging IDs first keeps inherited repository operations while allowing `findAllById` to load the page's complete aggregates in one query. Each populated page uses at most three read queries: IDs, an optional total count, and aggregates. Empty pages skip aggregate loading; query count does not grow with deposits or withdrawals per page.
 - `JdbcTimeDepositRepository` implements the read-only `TimeDepositRepository` port's `search(PageRequestVO)` and delegates aggregate conversion to `TimeDepositPersistenceMapper`. Loaded deposits and mapped withdrawals are sorted by ID in memory within the bounded page; selection and pagination happen in the database.
-- `TimeDepositRepositoryAdapter` implements `TimeDepositRepositoryPort` for balance processing. `streamPending()` selects only IDs with `days > last_processed_days`, ordered by ID. The service buffers at most 100 IDs and calls `findAllById(ids)`; the adapter uses inherited Spring Data loading and maps complete aggregates, including withdrawals, in ID order. Only the current group is materialized. The service rechecks processing watermarks after aggregate loading to skip deposits processed since cursor creation.
+- `TimeDepositRepositoryAdapter` implements `TimeDepositRepositoryPort` for balance processing. `streamAllIds()` selects every deposit ID, ordered by ID. The service buffers at most 100 IDs and calls `findAllById(ids)`; the adapter uses inherited Spring Data loading and maps complete aggregates, including withdrawals, in ID order. Only the current group is materialized.
 - `saveAll()` maps complete domain snapshots back to table records, preserving withdrawal IDs/amounts/dates, plan, age, and loaded version, and calls inherited `CrudRepository.saveAll()`. `TimeDepositTable.version` uses `@Version`, so Spring Data JDBC performs optimistic version checking and increments. A stale or deleted row aborts the whole transaction. Aggregate saves may delete/reinsert mapped child rows; the mapper carries the full withdrawal collection so its persisted data is preserved.
 - Bootstrap uses `spring-boot-starter-data-jdbc` and explicit `@EnableJdbcRepositories` because its application class is outside the persistence package. Its JDBC template sets fetch size 100; together with autocommit disabled by the outer transaction, this enables PostgreSQL server-side fetching of IDs. Bootstrap also enables single-query aggregate loading and owns the transaction boundary.
 
@@ -69,13 +69,14 @@ mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packa
 
 ### Current refactor verification status
 
-The latest aggregate-persistence and schedule-value-object refactor passed on JDK 27
-with release 25: `mvn test` ran **162 non-integration cases**, and
-`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed those plus
-**29 PostgreSQL integration cases**, with no failures, errors, or skips. Coverage
-includes the real ID-only cursor, bounded aggregate loading/saving, withdrawal preservation,
-cursor closure on failures, framework-managed optimistic locking, multi-group rollback,
-concurrent HTTP updates, and schedule boundaries.
+Verification uses JDK 27 with release 25. The suite covers per-invocation calculation,
+eligibility boundaries, repeated credits at unchanged ages, the real ID-only cursor,
+bounded aggregate loading/saving, withdrawal preservation, cursor closure on failures,
+framework-managed optimistic locking, multi-group rollback, and concurrent HTTP updates.
+Historical verification results are recorded in `IMPLEMENTATION_PLAN.md`.
+The incremental-processing removal passed `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify`: **158 non-integration cases
+and 28 PostgreSQL integration cases**, without failures, errors, or skips.
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -145,9 +146,9 @@ Example GET response:
 
 `page` is zero-based and defaults to `0`; `size` is positive and defaults to `20`. Request subsequent pages until `page + 1` reaches `totalPages` to retrieve the complete collection. A page beyond the last returns `content: []` while retaining totals; an empty database has zero elements and zero pages. Deposits without withdrawals have `withdrawals: []`. Withdrawal fields are an explicit interpretation of the assignment's unspecified nested response shape.
 
-The OpenAPI contract is version **3.0.0** because POST now processes pending periods idempotently rather than crediting interest on every invocation. The paginated GET shape introduced in version 2 remains the same.
+The OpenAPI contract is version **4.0.0** because POST now credits interest once per invocation again, without incremental scheduling. The paginated GET shape introduced in version 2 remains the same.
 
-POST returns **204** after processing pending periods, and another call at the same deposit ages is a no-op. Overlapping requests that read stale versions receive **409 Conflict**, with their entire transaction rolled back; retrying reloads current state. Days and withdrawals remain unchanged. The detailed schedule, migration assumptions, and concurrency behavior are documented in [BATCH_BALANCE_UPDATES.md](BATCH_BALANCE_UPDATES.md).
+POST returns **204** after applying the calculator once to every deposit. Another successful call credits eligible deposits again at their current ages; there is no catch-up or idempotency watermark. Overlapping requests that read stale versions receive **409 Conflict**, with their entire transaction rolled back; retrying reloads current state and applies a new calculation. Days and withdrawals remain unchanged. Calculation and concurrency behavior are documented in [BATCH_BALANCE_UPDATES.md](BATCH_BALANCE_UPDATES.md).
 
 ### Contract-first code generation
 
@@ -242,7 +243,7 @@ var deposit = new TimeDeposit(1, loyalty, 1000.0, 46);
 double interest = resolver.resolve(deposit).calculateInterestRounded(deposit); // 4.17
 ```
 
-The update service passes each historical-period deposit to the calculator and saves
+The update service passes each loaded group directly to the calculator once and saves
 the complete updated aggregates within the same transaction. The no-argument calculator retains the three
 built-in rules and `updateBalance(List<TimeDeposit>)` mutates balances in place.
 `Double getBalance()` and `setBalance(Double)` retain their balance API. The deposit
@@ -253,18 +254,15 @@ rounding behavior; additional cases cover permitted strategies, typed registrati
 resolution, plan/balance values, deposit updates, and withdrawal immutability. See
 [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.
 
-`InterestPeriodSchedule`, an immutable value object containing `PlanType`, selects
-the pending 30-day credit dates from a deposit's age and processing watermark.
-`TimeDeposit.pendingInterestDays()` delegates to it. The application presents each
-selected period to the calculator in chronological order; the schedule does not
-calculate or round monetary amounts.
+Eligibility is evaluated at each deposit's current age. The application does not
+construct historical-period deposits or infer missing monthly credits.
 
 ## Flyway schema evolution
 
 Migrations live in `adapter/adapter-persistence/src/main/resources/db/migration/` and are loaded from that dependency's classpath by bootstrap.
 
 - `V1__create_time_deposit_schema.sql` creates the quoted `"timeDeposits"` table and camel-case columns, `withdrawals`, required constraints, and the foreign-key index.
-- `V2__add_withdrawals_and_calculation_tracking.sql` adds non-null `last_processed_days` and `version`, both defaulting to zero. Withdrawals and its index already exist in V1. Existing balances are treated as opening principal; see the migration assumptions in the batch documentation.
+- `V2__add_withdrawals_and_calculation_tracking.sql` historically added `last_processed_days` and `version`, both defaulting to zero. The application no longer maps or uses `last_processed_days`; `version` still supports optimistic locking. Withdrawals and its index already exist in V1.
 - Do not modify an already-applied migration; startup validates recorded checksums.
 - Flyway is the only schema initializer. Spring SQL initialization is disabled; no ORM schema generation is used.
 - Flyway clean is disabled in application configuration. Integration tests use disposable PostgreSQL instances.

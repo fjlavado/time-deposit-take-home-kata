@@ -9,8 +9,7 @@ import java.util.stream.Stream;
 public interface TimeDepositBalanceJdbcRepository extends CrudRepository<TimeDepositTable, Integer> {
     @Query("""
             SELECT id FROM "timeDeposits"
-            WHERE days > last_processed_days
             ORDER BY id
             """)
-    Stream<Integer> streamPending();
+    Stream<Integer> streamAllIds();
 }

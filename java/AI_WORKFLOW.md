@@ -425,3 +425,26 @@ HTTP behavior and idempotent retries also pass.
 `mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27
 with release 25: **162 non-integration cases and 29 PostgreSQL integration cases**,
 without failures, errors, or skips. Application packaging succeeded.
+
+## Removal of incremental processing — 2026-10-23
+
+The user requested removal of `pendingInterestDays()` and all related behavior,
+and confirmed that this means removing incremental processing entirely. Each
+successful update must apply the existing calculator once to every deposit at
+its current age; repeated successful requests credit eligible deposits again.
+This supersedes the earlier schedule and watermark design recorded above.
+
+OpenCode with `openai/gpt-6.1-sol` used filesystem/reference tools, `apply_patch`,
+Git, Maven, and PostgreSQL Testcontainers through the local Docker socket. The
+assisted changes remove the schedule value object and processing-watermark API,
+simplify orchestration, stream all IDs, remove obsolete persistence mapping, and
+update behavioral tests, OpenAPI, and current guidance. Existing calculator rules,
+bounded aggregate persistence, transaction rollback, and optimistic locking remain.
+The old watermark database column is unused pending a separate forward migration;
+applied V1/V2 migrations are preserved.
+
+Verification: `mvn -q clean test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn -q verify` passed on JDK 27 with
+release 25: **158 non-integration cases and 28 PostgreSQL integration cases**,
+without failures, errors, or skips. Commits are requested explicitly and grouped
+by behavioral removal and schema cleanup.

@@ -19,14 +19,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UpdateDepositBalancesServiceTest {
     @Test
-    void catchesUpMissedPeriodsAndDoesNotReapplyPreviouslyProcessedInterest() {
-        var deposits = List.of(deposit(1, PlanType.BASIC, 91, 31),
-                deposit(2, PlanType.PREMIUM, 76, 0), deposit(3, PlanType.STUDENT, 400, 331),
-                deposit(4, PlanType.BASIC, 30, 0));
+    void appliesTheCalculatorOnceAtCurrentAgeOnEveryInvocation() {
+        var deposits = List.of(deposit(1, PlanType.BASIC, 91),
+                deposit(2, PlanType.PREMIUM, 76), deposit(3, PlanType.STUDENT, 400),
+                deposit(4, PlanType.BASIC, 30), deposit(5, PlanType.STUDENT, 365),
+                deposit(6, PlanType.UNKNOWN, 400), deposit(7, PlanType.PREMIUM, 45));
         var saved = new ArrayList<TimeDeposit>();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<Integer> streamPending() {
-                return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays()).map(TimeDeposit::getId);
+            public Stream<Integer> streamAllIds() {
+                return deposits.stream().map(TimeDeposit::getId);
             }
             public List<TimeDeposit> findAllById(List<Integer> ids) {
                 return deposits.stream().filter(d -> ids.contains(d.getId())).toList();
@@ -38,10 +39,12 @@ class UpdateDepositBalancesServiceTest {
         service.updateBalances();
         // Preserve the calculator's unrounded final binary-double balance.
         assertThat(deposits).extracting(TimeDeposit::getBalance)
-                .containsExactly(1001.6600000000001, 1008.3499999999999, 1002.5, 1000.0);
-        assertThat(deposits).extracting(TimeDeposit::getLastProcessedDays).containsExactly(91, 76, 400, 30);
+                .containsExactly(1000.83, 1004.17, 1000.0, 1000.0, 1002.5, 1000.0, 1000.0);
         service.updateBalances();
-        assertThat(saved).containsExactlyElementsOf(deposits);
+        assertThat(deposits).extracting(TimeDeposit::getBalance)
+                .containsExactly(1001.6600000000001, 1008.3499999999999, 1000.0, 1000.0, 1005.01, 1000.0, 1000.0);
+        assertThat(deposits).extracting(TimeDeposit::getDays).containsExactly(91, 76, 400, 30, 365, 400, 45);
+        assertThat(saved).hasSize(2 * deposits.size());
     }
 
     @Test
@@ -51,7 +54,7 @@ class UpdateDepositBalancesServiceTest {
         var loaded = new ArrayList<Integer>();
         var saved = new ArrayList<Integer>();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<Integer> streamPending() {
+            public Stream<Integer> streamAllIds() {
                 return IntStream.rangeClosed(1, 205).boxed().peek(id -> read.incrementAndGet())
                         .onClose(() -> closed.set(true));
             }
@@ -59,13 +62,12 @@ class UpdateDepositBalancesServiceTest {
                 assertThat(ids).hasSizeLessThanOrEqualTo(100);
                 assertThat(read.get()).isEqualTo(loaded.size() + ids.size());
                 loaded.addAll(ids);
-                return ids.stream().map(id -> deposit(id, PlanType.BASIC, 31, 0)).toList();
+                return ids.stream().map(id -> deposit(id, PlanType.BASIC, 31)).toList();
             }
             public void saveAll(List<TimeDeposit> batch) {
                 saved.add(batch.size());
                 assertThat(read.get()).isEqualTo(saved.stream().mapToInt(Integer::intValue).sum());
                 assertThat(batch).extracting(TimeDeposit::getBalance).containsOnly(1000.83);
-                assertThat(batch).extracting(TimeDeposit::getLastProcessedDays).containsOnly(31);
             }
         };
 
@@ -79,11 +81,11 @@ class UpdateDepositBalancesServiceTest {
     void closesTheIdStreamAndPropagatesWriteFailures() {
         var closed = new AtomicBoolean();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<Integer> streamPending() {
+            public Stream<Integer> streamAllIds() {
                 return Stream.of(1).onClose(() -> closed.set(true));
             }
             public List<TimeDeposit> findAllById(List<Integer> ids) {
-                return List.of(deposit(1, PlanType.BASIC, 31, 0));
+                return List.of(deposit(1, PlanType.BASIC, 31));
             }
             public void saveAll(List<TimeDeposit> batch) { throw new IllegalStateException("write failed"); }
         };
@@ -97,7 +99,7 @@ class UpdateDepositBalancesServiceTest {
     void closesTheIdStreamAndPropagatesAggregateLoadFailures() {
         var closed = new AtomicBoolean();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<Integer> streamPending() {
+            public Stream<Integer> streamAllIds() {
                 return Stream.of(1).onClose(() -> closed.set(true));
             }
             public List<TimeDeposit> findAllById(List<Integer> ids) {
@@ -112,19 +114,19 @@ class UpdateDepositBalancesServiceTest {
     }
 
     @Test
-    void skipsIdsAlreadyProcessedBeforeTheirAggregatesAreLoaded() {
+    void emptyDatabaseDoesNotLoadOrSaveAggregates() {
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<Integer> streamPending() { return Stream.of(1); }
+            public Stream<Integer> streamAllIds() { return Stream.empty(); }
             public List<TimeDeposit> findAllById(List<Integer> ids) {
-                return List.of(deposit(1, PlanType.BASIC, 31, 31));
+                throw new AssertionError("Must not load an empty group");
             }
-            public void saveAll(List<TimeDeposit> batch) { throw new AssertionError("Already processed"); }
+            public void saveAll(List<TimeDeposit> batch) { throw new AssertionError("Must not save an empty group"); }
         };
 
         new UpdateDepositBalancesService(repository, new TimeDepositCalculator()).updateBalances();
     }
 
-    private static TimeDeposit deposit(int id, PlanType plan, int days, int processed) {
-        return new TimeDeposit(id, plan, 1000.0, days, List.of(), processed, 0);
+    private static TimeDeposit deposit(int id, PlanType plan, int days) {
+        return new TimeDeposit(id, plan, 1000.0, days);
     }
 }

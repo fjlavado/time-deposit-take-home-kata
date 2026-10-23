@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 public final class TimeDepositPersistenceMapper {
     public TimeDepositTable toTable(TimeDeposit deposit) {
         return new TimeDepositTable(deposit.getId(), deposit.getPlanType().value(),
-                BigDecimal.valueOf(deposit.getBalance()), deposit.getDays(), deposit.getLastProcessedDays(),
+                BigDecimal.valueOf(deposit.getBalance()), deposit.getDays(),
                 deposit.getVersion(), deposit.getWithdrawals().stream()
                         .map(withdrawal -> new WithdrawalTable(withdrawal.id(), withdrawal.amount(), withdrawal.date()))
                         .collect(Collectors.toSet()));
@@ -24,6 +24,6 @@ public final class TimeDepositPersistenceMapper {
         return new TimeDeposit(deposit.id(), new PlanType(deposit.planType()), deposit.balance().doubleValue(), deposit.days(),
                 deposit.withdrawals().stream().sorted(Comparator.comparing(WithdrawalTable::id))
                         .map(row -> new Withdrawal(row.id(), row.amount(), row.date())).toList(),
-                deposit.lastProcessedDays(), deposit.version());
+                deposit.version());
     }
 }

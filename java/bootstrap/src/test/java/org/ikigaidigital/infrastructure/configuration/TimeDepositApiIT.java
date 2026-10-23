@@ -21,6 +21,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -50,8 +51,6 @@ class TimeDepositApiIT {
                 INSERT INTO withdrawals ("timeDepositId", amount, date)
                 VALUES (1, 12.34, DATE '2026-01-02'), (1, 0.10, DATE '2026-01-03')
                 """);
-        // This expired Student has already received all periods through day 365.
-        jdbc.execute("UPDATE \"timeDeposits\" SET last_processed_days = 365 WHERE id = 3");
     }
 
     @Test
@@ -96,7 +95,7 @@ class TimeDepositApiIT {
 
         assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
         assertThat(json.readTree(request("GET", "/time-deposits").body()).get("content").get(0).get("balance").asDouble())
-                .isEqualTo(1000.83);
+                .isCloseTo(1001.66, within(1e-9));
     }
 
     @Test

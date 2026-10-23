@@ -1,7 +1,6 @@
 package org.ikigaidigital.application.service;
 
 import org.ikigaidigital.application.port.in.UpdateDepositBalancesUseCase;
-import org.ikigaidigital.domain.interest.TimeDeposit;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.services.TimeDepositCalculator;
 
@@ -22,7 +21,7 @@ public final class UpdateDepositBalancesService implements UpdateDepositBalances
 
     @Override
     public void updateBalances() {
-        try (var ids = repository.streamPending()) {
+        try (var ids = repository.streamAllIds()) {
             var iterator = ids.iterator();
             var group = new ArrayList<Integer>(BATCH_SIZE);
             while (iterator.hasNext()) {
@@ -39,20 +38,9 @@ public final class UpdateDepositBalancesService implements UpdateDepositBalances
     }
 
     private void updateGroup(List<Integer> ids) {
-        // Another request may have processed these IDs since the cursor was opened.
-        var deposits = repository.findAllById(ids).stream()
-                .filter(deposit -> deposit.getDays() > deposit.getLastProcessedDays()).toList();
-
-        for (var deposit : deposits) {
-            deposit.pendingInterestDays().forEach(day -> {
-                // Present the historical period's age to the existing calculator,
-                // carrying the newly compounded balance forward one period at a time.
-                var period = new TimeDeposit(deposit.getId(), deposit.getPlanType(), deposit.getBalance(), day);
-                calculator.updateBalance(List.of(period));
-                deposit.setBalance(period.getBalance());
-            });
-            deposit.markCalculationProcessed();
-        }
+        var deposits = repository.findAllById(ids);
+        // Each request applies the existing calculator once at the deposit's current age.
+        calculator.updateBalance(deposits);
         if (!deposits.isEmpty()) {
             repository.saveAll(deposits);
         }

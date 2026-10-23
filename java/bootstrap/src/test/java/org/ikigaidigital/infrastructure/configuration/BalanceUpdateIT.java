@@ -10,10 +10,8 @@ import org.ikigaidigital.application.port.in.QueryBus;
 import org.ikigaidigital.application.query.Query;
 import org.ikigaidigital.application.query.RetrieveTimeDepositsQuery;
 import org.ikigaidigital.application.query.handler.QueryHandler;
-import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
 import org.ikigaidigital.application.service.UpdateDepositBalancesService;
-import org.ikigaidigital.domain.model.PageRequestVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +20,6 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,9 +32,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.stream.Stream;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -57,7 +51,6 @@ class BalanceUpdateIT {
     }
 
     @Autowired JdbcTemplate jdbc;
-    @Autowired TimeDepositRepository repository;
     @Autowired TimeDepositRepositoryPort balanceRepository;
     @Autowired QueryBus queries;
     @Autowired CommandBus commands;
@@ -69,9 +62,9 @@ class BalanceUpdateIT {
     void resetData() {
         jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
         jdbc.execute("""
-                INSERT INTO "timeDeposits" (id, "planType", balance, days, last_processed_days)
-                VALUES (1, 'basic', 1000, 31, 0), (2, 'student', 1000, 365, 331),
-                       (3, 'premium', 1000, 46, 0), (4, 'student', 1000, 366, 365)
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                VALUES (1, 'basic', 1000, 31), (2, 'student', 1000, 365),
+                       (3, 'premium', 1000, 46), (4, 'student', 1000, 366)
                 """);
         jdbc.execute("INSERT INTO withdrawals (\"timeDepositId\", amount, date) VALUES (1, 12.34, DATE '2026-01-02')");
     }
@@ -94,9 +87,9 @@ class BalanceUpdateIT {
                 """);
         var failingRepository = new TimeDepositRepositoryPort() {
             @Override
-            public Stream<Integer> streamPending() {
+            public Stream<Integer> streamAllIds() {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
-                return balanceRepository.streamPending();
+                return balanceRepository.streamAllIds();
             }
 
             @Override
@@ -122,34 +115,6 @@ class BalanceUpdateIT {
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM \"timeDeposits\" WHERE balance <> 1000", Integer.class))
                 .isZero();
-    }
-
-    @Test
-    void concurrentTriggersNeverCreditTheSamePeriodTwice() throws Exception {
-        var start = new CountDownLatch(1);
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> {
-                start.await();
-                return tryUpdate();
-            });
-            var second = executor.submit(() -> {
-                start.await();
-                return tryUpdate();
-            });
-            start.countDown();
-            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS))).contains(true);
-        }
-
-        assertThat(repository.search(new PageRequestVO(0, 20)).content().get(1).getBalance()).isEqualTo(1002.5);
-    }
-
-    private boolean tryUpdate() {
-        try {
-            commands.dispatch(new UpdateTimeDepositBalancesCommand());
-            return true;
-        } catch (OptimisticLockingFailureException conflict) {
-            return false;
-        }
     }
 
     @Test

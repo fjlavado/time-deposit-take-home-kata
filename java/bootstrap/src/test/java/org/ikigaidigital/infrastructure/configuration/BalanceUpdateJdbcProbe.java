@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Observe the ID-only cursor and aggregate reads without coupling tests to generated write SQL. */
 final class BalanceUpdateJdbcProbe {
-    final AtomicInteger pendingReads = new AtomicInteger();
+    final AtomicInteger idReads = new AtomicInteger();
     final AtomicInteger aggregateReads = new AtomicInteger();
     final AtomicInteger cursorRows = new AtomicInteger();
     final AtomicInteger openStatements = new AtomicInteger();
@@ -25,7 +25,7 @@ final class BalanceUpdateJdbcProbe {
     final List<Boolean> autoCommit = new CopyOnWriteArrayList<>();
 
     void reset() {
-        pendingReads.set(0);
+        idReads.set(0);
         aggregateReads.set(0);
         cursorRows.set(0);
         openStatements.set(0);
@@ -49,7 +49,7 @@ final class BalanceUpdateJdbcProbe {
             var result = invocation.proceed();
             if (invocation.getMethod().getName().equals("prepareStatement")) {
                 var sql = ((String) invocation.getArguments()[0]).stripLeading();
-                if (sql.startsWith("SELECT id") && sql.contains("WHERE days > last_processed_days")) {
+                if (sql.startsWith("SELECT id FROM \"timeDeposits\"")) {
                     return cursorStatement((PreparedStatement) result, wrapped[0]);
                 }
                 var upper = sql.toUpperCase(Locale.ROOT);
@@ -71,7 +71,7 @@ final class BalanceUpdateJdbcProbe {
                 return connection;
             }
             if (method.equals("executeQuery")) {
-                pendingReads.incrementAndGet();
+                idReads.incrementAndGet();
                 fetchSizes.add(statement.getFetchSize());
                 autoCommit.add(connection.getAutoCommit());
             }
