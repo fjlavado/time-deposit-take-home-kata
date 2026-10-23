@@ -16,7 +16,7 @@
 - Persistence uses Spring Data JDBC under `adapter/adapter-persistence`: annotated table records, inherited CRUD/paging repositories, and a dedicated domain mapper. `TimeDepositTable` must own withdrawals through `@MappedCollection(idColumn = "timeDepositId")`. The domain port exposes `search(PageRequest)` with framework-free page values. Use inherited `findAll(Pageable)` on the ID-only paging repository and inherited `CrudRepository.findAllById` with single-query loading on the aggregate repository; direct paged aggregate loading introduces extra child queries. Do not redeclare `findAll`. Preserve ID ordering and keep row locks/balance-only modifying queries in persistence; bootstrap enables repository scanning/loading and owns the transaction across every update page.
 - The calculator's Strategy refactor and subsequent typed/sealed API changes are documented in `CALCULATOR_REFACTOR_PLAN.md`. Keep backend code/tests in their corresponding modules.
 - Test dependencies are centrally managed by the Boot parent.
-- The shared suite has 60 calculator cases, plus strategy/resolver/typed-registry/value-object and withdrawal cases. Maintain meaningful behavioral assertions when adding plans.
+- The shared suite has 60 calculator cases (updated for the current rounding behavior), plus strategy/resolver/typed-registry/value-object and withdrawal cases. Maintain meaningful behavioral assertions when adding plans.
 
 ## Compatibility requirements
 
@@ -30,7 +30,7 @@
 
 ## Interest calculation: current behavior
 
-Eligibility, rates, and rounding retain the assignment's original behavior:
+Eligibility and rates retain the assignment's original behavior; the supplied refactor changes half-cent rounding as described below:
 
 | Plan value | Eligible days | Interest per update |
 | --- | --- | --- |
@@ -42,8 +42,8 @@ Eligibility, rates, and rounding retain the assignment's original behavior:
 - Student interest includes day 365 and stops at day 366. Premium interest starts on day 46.
 - Plan matching currently uses the exact lowercase strings above; unrecognized non-null plan values receive zero interest.
 - Although the README describes monthly interest using percentages, the existing code divides each rate by 12. Preserve this formula and document the interpretation when implementing it.
-- Interest is computed using `double`, converted with `new BigDecimal(interest)`, rounded to two decimal places using `RoundingMode.HALF_UP`, converted back to `double`, and then added to the original balance. The final balance is not separately rounded.
-- Changing the conversion to `BigDecimal.valueOf` changes established half-cent results and must be treated as a separate behavioral change.
+- Interest is computed using `double`, converted with `BigDecimal.valueOf(interest)`, rounded to two decimal places using `RoundingMode.HALF_UP`, converted back to `double`, and then added to the original balance. The final balance is not separately rounded.
+- The supplied switch from `new BigDecimal(interest)` changes basic balance 18 to 18.02 (formerly 18.01) and student balance 6 to 6.02 (formerly 6.01). Tests must assert the current behavior and document this difference from the original baseline.
 
 ## Required API and persistence
 
@@ -86,7 +86,7 @@ mvn verify
 - Use Testcontainers as preferred by the README for real-database integration tests. Document Docker prerequisites and any Maven profile or lifecycle configuration introduced so the tests are reproducible.
 - Verify that the contract and implementation expose exactly the two required business operations.
 - Report commands run and their results accurately; if verification is blocked, state the blocker.
-- The typed/sealed migration includes the required accessor/registry/mapping fixes: use `Balance.value()` in the deposit getter, accept typed registry keys in the calculator constructor, and wrap stored plan names in the persistence mapper. Verify staged checkpoints independently and record their results in `AI_WORKFLOW.md`.
+- The typed/sealed test update initially excluded production changes. The user subsequently approved three minimal compilation fixes: use `Balance.value()` in the deposit getter, accept typed registry keys in the calculator constructor, and wrap stored plan names in the persistence mapper. These fixes and the singleton test cleanup are complete; `mvn test` and full PostgreSQL verification passed (153 non-integration and 15 integration cases). Keep subsequent work within the user's requested scope.
 
 ## Meaningful commits: apply every time
 

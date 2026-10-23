@@ -5,7 +5,8 @@ info:
   description: >-
     Retrieves deposits and credits one month's interest per update invocation.
     Rates are annual percentages divided by twelve. Only interest is rounded to
-    two decimal places using the starter's binary-double HALF_UP behavior.
+    two decimal places using BigDecimal.valueOf of the double interest and HALF_UP.
+    The resulting interest is added to the balance without final-balance rounding.
 servers:
   - url: http://localhost:8080
 paths:

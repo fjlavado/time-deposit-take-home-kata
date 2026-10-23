@@ -18,9 +18,9 @@ import static org.ikigaidigital.services.interest.StudentInterestStrategy.STUDEN
 
 class InterestStrategyTest {
     @ParameterizedTest
-    @CsvSource({"0, 0", "6, 0.01", "18, 0.01", "17.88, 0.01", "18.12, 0.02",
-            "-6, -0.01", "-18, -0.01"})
-    void roundsInterestUsingTheEstablishedBinaryConversion(double balance, double expected) {
+    @CsvSource({"0, 0", "6, 0.01", "18, 0.02", "17.88, 0.01", "18.12, 0.02",
+            "-6, -0.01", "-18, -0.02"})
+    void roundsInterestHalfUpUsingTheDoubleDecimalRepresentation(double balance, double expected) {
         TimeDeposit deposit = new TimeDeposit(1, PlanType.BASIC, balance, 46);
 
         assertThat(BASIC_INTEREST_STRATEGY.calculateInterestRounded(deposit)).isEqualTo(expected);

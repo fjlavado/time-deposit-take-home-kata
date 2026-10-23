@@ -273,3 +273,91 @@ From the exported refactor checkpoint, `mvn test` and
 `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27 with release 25:
 **153 non-integration cases** (127 in domain) and **14 PostgreSQL integration cases**,
 with no failures, errors, or skips. Application packaging also succeeded.
+
+## Typed plans and sealed strategies: test/documentation update — 2026-10-23
+
+The user supplied domain/API/package changes and explicitly requested changes only
+to tests and affected documentation. OpenCode with `openai/gpt-6.1-sol` inspected the
+existing staged/unstaged work using Git and filesystem tools and used `apply_patch`
+for test/documentation edits. The initial pass left production code and build configuration
+as supplied; the subsequent approved scope expansion is recorded below.
+
+Reproduce the task with:
+
+> Update Java tests for the supplied PlanType, relocated TimeDeposit/calculator,
+> Balance.value(), sealed InterestStrategy, and BigDecimal.valueOf rounding changes.
+> Use permitted strategy instances instead of lambdas or anonymous implementations;
+> preserve meaningful eligibility, routing, registry-copy, metadata, and rounding
+> coverage. Update affected documentation and run mvn test and mvn verify. Keep all
+> production code as supplied and report production blockers without test workarounds.
+
+The assisted work migrates domain/application/adapter fixtures and assertions to
+typed plans, replaces custom-implementation tests with permitted strategy aliases
+and overrides, and updates ArchUnit's domain package definitions. Added coverage
+checks exact plan value semantics, strategy-declared plans, string serialization,
+and persisted half-cent rounding. Documentation now explains the sealed extension
+boundary and the 18.02/6.02 results that differ from the original calculator.
+
+Initial `mvn test` and `mvn verify` attempts stopped in domain production compilation,
+before any tests ran: `TimeDeposit.getBalance()` called the removed `Balance.amount()`
+accessor, and the calculator passed `Map<String, InterestStrategy>` to a resolver requiring
+typed keys. Inspection also found that the persistence mapper passed a string to the
+deposit's `PlanType` argument. The first pass reported these blockers and passed
+`git diff --check` without changing production code.
+
+When the user asked to continue, OpenCode rechecked those files and explicitly asked
+whether to expand the scope. The user selected **Allow minimal production fixes**.
+The agent changed only the three approved production mismatches: `balance.value()` in
+the deposit getter, `Map<PlanType, InterestStrategy>` in the calculator constructor, and
+`new PlanType(deposit.planType())` in the persistence mapper. No build configuration
+changes were needed.
+
+`mvn test` then passed **179 non-integration cases**. Docker availability was checked,
+and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed those plus **15 PostgreSQL
+integration cases**, including the new persisted half-cent results. All tests passed
+without failures, errors, or skips on JDK 27 with release 25; application packaging also
+succeeded. Documentation was updated to replace the resolved blocker status with these
+results.
+
+## Singleton strategy test cleanup — 2026-10-23
+
+The user requested review of the latest `InterestStrategy` implementation changes,
+test fixes, and removal of unnecessary tests. OpenCode with `openai/gpt-6.1-sol`
+used Git diffs, filesystem tools, and `apply_patch` to adapt tests to private
+constructors, public singleton constants, and `apply(TimeDeposit)` returning the
+eligible strategy or the no-interest singleton. The initial `mvn test` reproduced
+six test-compilation errors from calls to the now-private constructors.
+
+The assisted changes replace those constructor calls and assert singleton identity,
+fix eligibility assertions to use the expected outcome, and replace self-derived
+plan-type expectations with explicit constants. Repeated day/plan cases in raw
+interest calculations and resolver tests were removed. Duplicate calculator tests
+for registry snapshots, empty registries, and mixed-deposit processing were removed
+because the resolver and calculator suites already cover those behaviors. All 60
+calculator characterization cases and direct eligibility boundaries remain.
+
+Reproduce the task with:
+
+> Review the singleton InterestStrategy implementations and apply(deposit) fallback.
+> Fix the Java tests to use the public instances and assert eligible/ineligible
+> results. Remove redundant coverage while preserving boundaries, rounding, aliases,
+> overrides, registry copying, and in-place balance updates. Run mvn test and mvn verify.
+
+`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27
+with release 25: **153 non-integration cases** (127 in domain) and **15 PostgreSQL
+integration cases**, without failures, errors, or skips. The cleanup removes 26
+redundant cases. Application packaging also succeeded.
+
+## Atomic decimal-rounding checkpoint — 2026-10-23
+
+The second commit isolates `BigDecimal.valueOf(interest)` from the structural
+refactor. Its tests cover positive/negative half-cent rounding and unchanged
+final-balance arithmetic, plus HTTP responses and persisted balances for basic 18
+and student 6. OpenAPI and current-status documentation describe the changed
+18.02/6.02 results. The original task histories above remain historical records.
+
+From a fresh exported index snapshot, `mvn test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed on JDK 27 with release 25:
+**153 non-integration cases** and **15 PostgreSQL integration cases**, with no
+failures, errors, or skips. Application packaging also succeeded. The obsolete
+IntelliJ module descriptor is handled by a separate metadata-only commit.

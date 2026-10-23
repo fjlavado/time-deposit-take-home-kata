@@ -111,6 +111,25 @@ class TimeDepositApiIT {
     }
 
     @Test
+    void persistsHalfCentInterestUsingDecimalHalfUpRounding() throws Exception {
+        jdbc.execute("TRUNCATE withdrawals, \"timeDeposits\" RESTART IDENTITY");
+        jdbc.execute("""
+                INSERT INTO "timeDeposits" (id, "planType", balance, days)
+                VALUES (1, 'basic', 18, 31), (2, 'student', 6, 31)
+                """);
+
+        assertThat(request("POST", "/time-deposits/balance-updates").statusCode()).isEqualTo(204);
+
+        var deposits = json.readTree(request("GET", "/time-deposits").body()).get("content");
+        assertThat(deposits.get(0).get("balance").asDouble()).isEqualTo(18.02);
+        assertThat(deposits.get(1).get("balance").asDouble()).isEqualTo(6.02);
+        assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 1", BigDecimal.class))
+                .isEqualByComparingTo("18.02");
+        assertThat(jdbc.queryForObject("SELECT balance FROM \"timeDeposits\" WHERE id = 2", BigDecimal.class))
+                .isEqualByComparingTo("6.02");
+    }
+
+    @Test
     void paginatesResultsAndPreservesTotalsBeyondTheLastPage() throws Exception {
         var firstResponse = request("GET", "/time-deposits?page=0&size=2");
         assertThat(firstResponse.statusCode()).isEqualTo(200);

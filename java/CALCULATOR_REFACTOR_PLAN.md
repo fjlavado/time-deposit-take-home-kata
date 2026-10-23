@@ -11,14 +11,28 @@ and `domain/src/main/java/org/ikigaidigital/domain/interest/TimeDeposit.java`.
 The subsequent user changes introduce `PlanType` constructor/getter values, move
 `Balance` into `domain.interest.vo` with a `value()` accessor, seal `InterestStrategy`
 to the four built-in implementations, add strategy `planType()` declarations, and key
-resolver registries by `PlanType`. Strategies use private constructors, public
-instances, and `apply(TimeDeposit)` eligibility/fallback.
+resolver registries by `PlanType`. `BigDecimal.valueOf(interest)` replaces the historical
+binary-exact conversion: basic balance 18 becomes 18.02 and student balance 6 becomes 6.02.
 
-Tests use typed fixtures and permitted strategy aliases/overrides rather than custom
-lambdas, retain binary half-cent expectations, and include the relocated calculator
-in architecture checks. HTTP and database plan names remain exact strings.
-See `AI_WORKFLOW.md` for independent staged checkpoint verification.
-Earlier results below apply to their historical snapshots; the original design below
+The task initially covered tests and documentation only. Tests now use typed fixtures,
+permitted strategy aliases/overrides rather than custom lambdas, exact plan value equality,
+decimal half-cent expectations, and the relocated calculator in architecture checks.
+The HTTP tests retain string plan serialization, and integration coverage checks the
+changed half-cent results in both responses and stored balances.
+
+Initial `mvn test` and `mvn verify` attempts stopped in domain production compilation.
+The user then explicitly approved minimal fixes in three production files: read
+`Balance.value()` from `TimeDeposit`, accept `Map<PlanType, InterestStrategy>` in the
+calculator constructor, and wrap the persistence mapper's stored string in `PlanType`.
+
+After these fixes, `mvn test` passed **179 non-integration cases** and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed those plus **15 PostgreSQL
+integration cases**, with no failures, errors, or skips, on JDK 27 with release 25.
+The subsequent singleton strategies use private constructors, public instances, and
+`apply(TimeDeposit)` eligibility/fallback. After redundant test cleanup, the latest
+verification passed **153 non-integration cases** (127 in domain) and **15 PostgreSQL
+integration cases**. Earlier results below apply to their historical snapshots;
+the original design below
 describes the pre-sealed, pre-`PlanType` API. See [README.md](README.md) for the current API.
 
 ### Original scope and compatibility

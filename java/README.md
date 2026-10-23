@@ -68,9 +68,16 @@ mvn verify     # Also runs PostgreSQL Testcontainers integration tests and packa
 
 ### Current refactor verification status
 
-The typed-plan/sealed-singleton refactor migrates all callers and boundary mappings.
-The staged checkpoint is verified independently of the subsequent decimal-rounding
-change; verification results are recorded in [AI_WORKFLOW.md](AI_WORKFLOW.md).
+The 2026-10-23 update follows the supplied `PlanType`, sealed-strategy, package, and
+rounding changes. After initial compilation blockers, the user approved three minimal
+production fixes: `TimeDeposit.getBalance()` now reads `Balance.value()`, the calculator
+registry constructor accepts `Map<PlanType, InterestStrategy>`, and the persistence
+mapper wraps stored plan names in `PlanType`.
+
+After the singleton test cleanup, verification passed on JDK 27 with release 25:
+`mvn test` ran **153 non-integration cases**, and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed those plus
+**15 PostgreSQL integration cases**, with no failures, errors, or skips.
 
 If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a working endpoint for the command. On a Linux host with the local Docker socket:
 
@@ -185,8 +192,10 @@ Eligibility and rates retain the starter's division by twelve:
 
 Rates are interpreted as annual percentages credited monthly. Matching is case-sensitive; unknown plan strings are returned unchanged and earn no interest.
 
-Calculation preserves double arithmetic followed by `new BigDecimal(interest)` and
-`setScale(2, RoundingMode.HALF_UP)`, including the established binary half-cent results.
+Calculation uses double arithmetic followed by `BigDecimal.valueOf(interest)` and
+`setScale(2, RoundingMode.HALF_UP)`. This differs from the earlier `new BigDecimal(interest)`
+conversion: basic balance 18 now becomes **18.02** (previously 18.01), and student balance
+6 becomes **6.02** (previously 6.01). Tests explicitly cover these changed half-cent results.
 **The final balance is not separately rounded.** Two basic credits on 1000 still produce
 `1001.6600000000001`. PostgreSQL uses unconstrained `NUMERIC`; the persistence mapper reads
 balances with `BigDecimal.doubleValue()`, and writes use `BigDecimal.valueOf(deposit.getBalance())`.
@@ -241,7 +250,7 @@ built-in rules and `updateBalance(List<TimeDeposit>)` mutates balances in place.
 `Double getBalance()` and `setBalance(Double)` retain their balance API. The deposit
 encapsulates immutable `Balance` values and credits already-rounded interest via
 `deposit.updateBalance(interest)`; `Balance.addInterest` returns a new value.
-Metadata and withdrawals are preserved. The 60 calculator cases retain the established
+Metadata and withdrawals are preserved. The 60 calculator cases now reflect the current
 rounding behavior; additional cases cover permitted strategies, typed registration and
 resolution, plan/balance values, deposit updates, and withdrawal immutability. See
 [CALCULATOR_REFACTOR_PLAN.md](CALCULATOR_REFACTOR_PLAN.md) for the design and results.

@@ -42,8 +42,8 @@ class TimeDepositCalculatorTest {
             "basic, 1000, 1000.83", "student, 1000, 1002.50", "premium, 1000, 1004.17",
             "basic, 0, 0", "student, 0, 0", "premium, 0, 0",
             "basic, 1, 1", "student, 1, 1", "premium, 1, 1",
-            "basic, 6, 6.01", "basic, 18, 18.01",
-            "student, 2, 2.01", "student, 6, 6.01",
+            "basic, 6, 6.01", "basic, 18, 18.02",
+            "student, 2, 2.01", "student, 6, 6.02",
             "premium, 1.2, 1.21", "premium, 3.6, 3.62",
             "basic, 1234.567, 1235.597",
             "student, 1234.567, 1237.657",
@@ -52,7 +52,7 @@ class TimeDepositCalculatorTest {
             "student, 1200000000, 1203000000",
             "premium, 1200000000, 1205000000"
     })
-    void preservesInterestRoundingAndDoesNotRoundFinalBalance(String plan, double balance, double expected) {
+    void roundsInterestHalfUpAndDoesNotRoundFinalBalance(String plan, double balance, double expected) {
         TimeDeposit deposit = new TimeDeposit(1, new PlanType(plan), balance, 46);
 
         calculator.updateBalance(List.of(deposit));

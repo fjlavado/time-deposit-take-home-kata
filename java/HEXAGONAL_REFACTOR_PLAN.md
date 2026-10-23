@@ -10,8 +10,12 @@ The 2026-10-23 supplied typed/sealed refactor further moves the model to
 calculator to `org.ikigaidigital.services`. Architecture tests include services in
 domain, allow application handlers to call the calculator, and allow web mapping of
 the relocated model while retaining the ban on web access to repository ports and
-calculator services. Current test/documentation updates follow that layout.
-See `AI_WORKFLOW.md` for independent staged checkpoint verification. The completed
+calculator services. Current test/documentation updates follow that layout. After the
+user approved three minimal production compilation fixes, `mvn test` and
+`DOCKER_HOST=unix:///var/run/docker.sock mvn verify` passed: 179 non-integration cases
+and 15 PostgreSQL integration cases, with no failures, errors, or skips. Subsequent
+singleton test cleanup reduced the non-integration suite to 153 passing cases;
+all 15 integration cases still pass. The completed
 steps and passing logs below describe the original refactor snapshot.
 
 ## Goal and constraints

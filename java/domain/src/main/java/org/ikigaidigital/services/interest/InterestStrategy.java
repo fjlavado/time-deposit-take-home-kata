@@ -16,8 +16,8 @@ public sealed interface InterestStrategy permits NoInterestStrategy, PremiumInte
 
     /** Returns monthly interest rounded to cents without mutating the eligible deposit. */
     default double calculateInterestRounded(TimeDeposit deposit) {
-        // Preserve binary-double conversion: valueOf changes established half-cent results.
-        return new BigDecimal(this.calculateInterest(deposit)).setScale(2, RoundingMode.HALF_UP).doubleValue();
+        // Round the double's decimal representation so half-cent interest rounds away from zero.
+        return BigDecimal.valueOf(this.calculateInterest(deposit)).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     /** Returns unrounded monthly interest for an eligible deposit without mutating it. */

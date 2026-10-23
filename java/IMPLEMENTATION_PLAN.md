@@ -15,10 +15,13 @@ page by page within one transaction.
 
 Current supplied refactor: the deposit moved to `domain.interest.TimeDeposit`, the calculator
 to `services.TimeDepositCalculator`, and plan/balance values to `domain.interest.vo`.
-Strategies are sealed singleton instances with declared `PlanType` keys and
-`apply(TimeDeposit)` eligibility/fallback. Tests and boundary mappers follow these
-changes while preserving binary half-cent rounding. See `AI_WORKFLOW.md` for staged
-checkpoint verification; earlier logs remain historical.
+Strategies are sealed with declared `PlanType` keys, and rounding now uses
+`BigDecimal.valueOf(interest)`. Tests/documentation follow these changes. The user approved
+three minimal fixes for production accessor/registry/mapping mismatches, and verification
+now passes after singleton test cleanup: **153 non-integration and 15 PostgreSQL
+integration cases**, with no failures,
+errors, or skips (`mvn test` and `DOCKER_HOST=unix:///var/run/docker.sock mvn verify`,
+JDK 27 with release 25). Earlier logs remain historical.
 
 ## Implementation commits
 
@@ -71,7 +74,7 @@ Domain and application production code must not depend on frameworks. Applicatio
 
 - [x] Model deposits and withdrawals. Subsequently consolidated to one mutable `TimeDeposit` with read-only withdrawals; the latest supplied refactor introduces `PlanType` values rather than raw string plan arguments.
 - [x] Separate interest eligibility/rates from application orchestration.
-- [x] Preserve established arithmetic: double interest, `new BigDecimal(interest)`, HALF_UP, then double addition without final rounding.
+- [x] Original arithmetic preservation: double interest, `new BigDecimal(interest)`, HALF_UP, then double addition without final rounding. The supplied refactor now uses `BigDecimal.valueOf(interest)`; tests assert its changed half-cent results.
 - [x] Cover basic (`days > 30`, 1%/12), student (`30 < days < 366`, 3%/12), premium (`days > 45`, 5%/12), unknown plans, rounding, and repeated updates.
 - [x] Do not change age or deduct withdrawals.
 
