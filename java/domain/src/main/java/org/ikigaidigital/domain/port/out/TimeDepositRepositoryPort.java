@@ -5,14 +5,17 @@ import org.ikigaidigital.domain.interest.TimeDeposit;
 import java.util.List;
 import java.util.stream.Stream;
 
-/** Incremental balance persistence; the caller owns a transaction across the stream and all writes. */
+/** Aggregate persistence; the caller owns a transaction across loading and all saves. */
 public interface TimeDepositRepositoryPort {
-    /** Ordered, lazy snapshots with days beyond their processing watermark. Must be closed by the caller. */
-    Stream<TimeDeposit> streamPending();
+    /** Stream pending IDs in order. The caller must close the stream within its transaction. */
+    Stream<Integer> streamPending();
+
+    /** Load a bounded group of complete aggregate snapshots, including withdrawals, ordered by ID. */
+    List<TimeDeposit> findAllById(List<Integer> ids);
 
     /**
-     * Persist only balances and processing watermarks, using each snapshot's version.
+     * Persist complete aggregate snapshots, using each snapshot's loaded version.
      * A stale or deleted row must fail the entire transaction; never silently skip it.
      */
-    void saveBatch(List<TimeDeposit> deposits);
+    void saveAll(List<TimeDeposit> deposits);
 }
