@@ -2,6 +2,8 @@ package org.ikigaidigital.infrastructure.configuration;
 
 import org.ikigaidigital.domain.port.out.TimeDepositRepository;
 import org.ikigaidigital.domain.port.out.TimeDepositRepositoryPort;
+import org.ikigaidigital.domain.port.out.BalanceUpdateExecutionRepository;
+import org.ikigaidigital.infrastructure.persistence.JdbcBalanceUpdateExecutionRepository;
 import org.ikigaidigital.infrastructure.persistence.JdbcTimeDepositRepository;
 import org.ikigaidigital.infrastructure.persistence.TimeDepositRepositoryAdapter;
 import org.ikigaidigital.infrastructure.persistence.mapper.TimeDepositPersistenceMapper;
@@ -22,6 +24,11 @@ import javax.sql.DataSource;
 @EnableJdbcRepositories(basePackageClasses = TimeDepositJdbcRepository.class,
         jdbcOperationsRef = "depositJdbcOperations")
 public class PersistenceAdapterConfiguration {
+    @Bean
+    BalanceUpdateExecutionRepository balanceUpdateExecutionRepository(JdbcTemplate jdbc) {
+        return new JdbcBalanceUpdateExecutionRepository(jdbc);
+    }
+
     @Bean
     NamedParameterJdbcTemplate depositJdbcOperations(DataSource dataSource) {
         var template = new JdbcTemplate(dataSource);

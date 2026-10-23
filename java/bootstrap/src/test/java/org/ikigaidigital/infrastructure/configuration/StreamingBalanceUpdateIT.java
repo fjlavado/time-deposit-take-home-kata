@@ -392,7 +392,7 @@ class StreamingBalanceUpdateIT {
             var withdrawals = jdbc.queryForList("SELECT * FROM upgrade_fixture.withdrawals");
             var latest = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                     .schemas("upgrade_fixture").load();
-            assertThat(latest.migrate().migrationsExecuted).isEqualTo(3 - startingVersion);
+            assertThat(latest.migrate().migrationsExecuted).isEqualTo(4 - startingVersion);
             latest.validate();
             assertThat(latest.migrate().migrationsExecuted).isZero();
             assertThat(jdbc.queryForList("SELECT id, \"planType\", balance, days FROM upgrade_fixture.\"timeDeposits\""))
