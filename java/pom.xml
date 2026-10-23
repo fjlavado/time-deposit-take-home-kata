@@ -47,4 +47,13 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>performance</id>
+            <modules>
+                <module>performance</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

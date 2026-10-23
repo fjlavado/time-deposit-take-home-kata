@@ -12,6 +12,19 @@ mvn -q verify` also passed. The published database port was changed locally to
 55433 because 5433 was occupied. Commands and assumptions are in
 `performance/README.md`; this increment adds no schema migration.
 
+The next increment implements the standalone Gatling Java module, opt-in Maven
+profile, and standard-library Python evaluation runner. Official Gatling docs,
+plugin source, and Maven Central metadata informed the pinned versions and API
+configuration. Real HTTP smoke/baseline/mixed/recovery verification passed with
+24 deposits and 113 withdrawals: two accepted executions completed, twenty busy
+responses matched their UUID, and immutable data/version checks passed. A
+deliberate zero-millisecond p95 budget returned nonzero and retained failure
+artifacts, verifying that failed assertions cannot appear as a passing run.
+Three Python reporting regressions passed, covering Gatling 3.16 HTML metrics
+and refusal to silently accept missing/changed report data. `mvn -q test` passed.
+The runner archives reports because this plugin pins its results directory, and
+extracts the HTML table because Gatling 3.16 writes binary simulation logs.
+
 ## Background jobs and database-backed admission
 
 The latest user request was implemented with OpenCode, `openai/gpt-6.1-sol`, local
