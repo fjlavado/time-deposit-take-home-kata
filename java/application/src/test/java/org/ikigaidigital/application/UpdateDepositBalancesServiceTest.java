@@ -25,10 +25,13 @@ class UpdateDepositBalancesServiceTest {
                 deposit(4, PlanType.BASIC, 30, 0));
         var saved = new ArrayList<TimeDeposit>();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<TimeDeposit> streamPending() {
-                return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays());
+            public Stream<Integer> streamPending() {
+                return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays()).map(TimeDeposit::getId);
             }
-            public void saveBatch(List<TimeDeposit> batch) { saved.addAll(batch); }
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                return deposits.stream().filter(d -> ids.contains(d.getId())).toList();
+            }
+            public void saveAll(List<TimeDeposit> batch) { saved.addAll(batch); }
         };
         var service = new UpdateDepositBalancesService(repository, new TimeDepositCalculator());
 
@@ -42,40 +45,83 @@ class UpdateDepositBalancesServiceTest {
     }
 
     @Test
-    void consumesLazilyAndFlushesFullAndPartialBatches() {
+    void consumesIdsLazilyAndLoadsAndSavesOnlyOneBoundedGroupAtATime() {
         var read = new AtomicInteger();
         var closed = new AtomicBoolean();
-        var sizes = new ArrayList<Integer>();
+        var loaded = new ArrayList<Integer>();
+        var saved = new ArrayList<Integer>();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<TimeDeposit> streamPending() {
-                return IntStream.rangeClosed(1, 205).mapToObj(id -> deposit(id, PlanType.BASIC, 31, 0))
-                        .peek(d -> read.incrementAndGet()).onClose(() -> closed.set(true));
+            public Stream<Integer> streamPending() {
+                return IntStream.rangeClosed(1, 205).boxed().peek(id -> read.incrementAndGet())
+                        .onClose(() -> closed.set(true));
             }
-            public void saveBatch(List<TimeDeposit> batch) {
-                sizes.add(batch.size());
-                assertThat(read.get()).isEqualTo(sizes.stream().mapToInt(Integer::intValue).sum());
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                assertThat(ids).hasSizeLessThanOrEqualTo(100);
+                assertThat(read.get()).isEqualTo(loaded.size() + ids.size());
+                loaded.addAll(ids);
+                return ids.stream().map(id -> deposit(id, PlanType.BASIC, 31, 0)).toList();
+            }
+            public void saveAll(List<TimeDeposit> batch) {
+                saved.add(batch.size());
+                assertThat(read.get()).isEqualTo(saved.stream().mapToInt(Integer::intValue).sum());
                 assertThat(batch).extracting(TimeDeposit::getBalance).containsOnly(1000.83);
+                assertThat(batch).extracting(TimeDeposit::getLastProcessedDays).containsOnly(31);
             }
         };
 
         new UpdateDepositBalancesService(repository, new TimeDepositCalculator()).updateBalances();
-        assertThat(sizes).containsExactly(100, 100, 5);
+        assertThat(saved).containsExactly(100, 100, 5);
+        assertThat(loaded).containsExactlyElementsOf(IntStream.rangeClosed(1, 205).boxed().toList());
         assertThat(closed).isTrue();
     }
 
     @Test
-    void closesTheStreamAndPropagatesWriteFailures() {
+    void closesTheIdStreamAndPropagatesWriteFailures() {
         var closed = new AtomicBoolean();
         var repository = new TimeDepositRepositoryPort() {
-            public Stream<TimeDeposit> streamPending() {
-                return Stream.of(deposit(1, PlanType.BASIC, 31, 0)).onClose(() -> closed.set(true));
+            public Stream<Integer> streamPending() {
+                return Stream.of(1).onClose(() -> closed.set(true));
             }
-            public void saveBatch(List<TimeDeposit> batch) { throw new IllegalStateException("write failed"); }
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                return List.of(deposit(1, PlanType.BASIC, 31, 0));
+            }
+            public void saveAll(List<TimeDeposit> batch) { throw new IllegalStateException("write failed"); }
         };
 
         assertThatThrownBy(() -> new UpdateDepositBalancesService(repository, new TimeDepositCalculator()).updateBalances())
                 .isInstanceOf(IllegalStateException.class).hasMessage("write failed");
         assertThat(closed).isTrue();
+    }
+
+    @Test
+    void closesTheIdStreamAndPropagatesAggregateLoadFailures() {
+        var closed = new AtomicBoolean();
+        var repository = new TimeDepositRepositoryPort() {
+            public Stream<Integer> streamPending() {
+                return Stream.of(1).onClose(() -> closed.set(true));
+            }
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                throw new IllegalStateException("load failed");
+            }
+            public void saveAll(List<TimeDeposit> batch) { throw new AssertionError("Must not save after a load failure"); }
+        };
+
+        assertThatThrownBy(() -> new UpdateDepositBalancesService(repository, new TimeDepositCalculator()).updateBalances())
+                .isInstanceOf(IllegalStateException.class).hasMessage("load failed");
+        assertThat(closed).isTrue();
+    }
+
+    @Test
+    void skipsIdsAlreadyProcessedBeforeTheirAggregatesAreLoaded() {
+        var repository = new TimeDepositRepositoryPort() {
+            public Stream<Integer> streamPending() { return Stream.of(1); }
+            public List<TimeDeposit> findAllById(List<Integer> ids) {
+                return List.of(deposit(1, PlanType.BASIC, 31, 31));
+            }
+            public void saveAll(List<TimeDeposit> batch) { throw new AssertionError("Already processed"); }
+        };
+
+        new UpdateDepositBalancesService(repository, new TimeDepositCalculator()).updateBalances();
     }
 
     private static TimeDeposit deposit(int id, PlanType plan, int days, int processed) {

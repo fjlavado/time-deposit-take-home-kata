@@ -22,28 +22,39 @@ public final class UpdateDepositBalancesService implements UpdateDepositBalances
 
     @Override
     public void updateBalances() {
-        try (var deposits = repository.streamPending()) {
-            var iterator = deposits.iterator();
-            var batch = new ArrayList<TimeDeposit>(BATCH_SIZE);
+        try (var ids = repository.streamPending()) {
+            var iterator = ids.iterator();
+            var group = new ArrayList<Integer>(BATCH_SIZE);
             while (iterator.hasNext()) {
-                var deposit = iterator.next();
-                deposit.pendingInterestDays().forEach(day -> {
-                    // Present the historical period's age to the existing calculator,
-                    // carrying the newly compounded balance forward one period at a time.
-                    var period = new TimeDeposit(deposit.getId(), deposit.getPlanType(), deposit.getBalance(), day);
-                    calculator.updateBalance(List.of(period));
-                    deposit.setBalance(period.getBalance());
-                });
-                deposit.markCalculationProcessed();
-                batch.add(deposit);
-                if (batch.size() == BATCH_SIZE) {
-                    repository.saveBatch(List.copyOf(batch));
-                    batch.clear();
+                group.add(iterator.next());
+                if (group.size() == BATCH_SIZE) {
+                    updateGroup(List.copyOf(group));
+                    group.clear();
                 }
             }
-            if (!batch.isEmpty()) {
-                repository.saveBatch(List.copyOf(batch));
+            if (!group.isEmpty()) {
+                updateGroup(List.copyOf(group));
             }
+        }
+    }
+
+    private void updateGroup(List<Integer> ids) {
+        // Another request may have processed these IDs since the cursor was opened.
+        var deposits = repository.findAllById(ids).stream()
+                .filter(deposit -> deposit.getDays() > deposit.getLastProcessedDays()).toList();
+
+        for (var deposit : deposits) {
+            deposit.pendingInterestDays().forEach(day -> {
+                // Present the historical period's age to the existing calculator,
+                // carrying the newly compounded balance forward one period at a time.
+                var period = new TimeDeposit(deposit.getId(), deposit.getPlanType(), deposit.getBalance(), day);
+                calculator.updateBalance(List.of(period));
+                deposit.setBalance(period.getBalance());
+            });
+            deposit.markCalculationProcessed();
+        }
+        if (!deposits.isEmpty()) {
+            repository.saveAll(deposits);
         }
     }
 }

@@ -139,12 +139,17 @@ class TimeDepositHandlersTest {
         }
 
         @Override
-        public Stream<TimeDeposit> streamPending() {
-            return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays());
+        public Stream<Integer> streamPending() {
+            return deposits.stream().filter(d -> d.getDays() > d.getLastProcessedDays()).map(TimeDeposit::getId);
         }
 
         @Override
-        public void saveBatch(List<TimeDeposit> updated) {
+        public List<TimeDeposit> findAllById(List<Integer> ids) {
+            return deposits.stream().filter(d -> ids.contains(d.getId())).toList();
+        }
+
+        @Override
+        public void saveAll(List<TimeDeposit> updated) {
             savedIds.addAll(updated.stream().map(TimeDeposit::getId).toList());
             saveCalls++;
         }
