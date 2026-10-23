@@ -1,4 +1,21 @@
 services:
+  app:
+    image: time-deposit-kata:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/time_deposits
+      DB_USERNAME: time_deposit
+      DB_PASSWORD: time_deposit
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      PORT: "8080"
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 1m
   postgres:
     image: postgres:17.6-alpine
     environment:
@@ -6,7 +23,7 @@ services:
       POSTGRES_USER: time_deposit
       POSTGRES_PASSWORD: time_deposit
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - time-deposit-data:/var/lib/postgresql/data
     healthcheck:

@@ -101,7 +101,70 @@ If an inherited `DOCKER_HOST` targets an unavailable remote daemon, select a wor
 DOCKER_HOST=unix:///var/run/docker.sock mvn verify
 ```
 
-## Run locally
+## Run with Docker Compose
+
+From `java/`, with Docker Engine and Compose v2 available:
+
+```sh
+docker compose up --build -d --wait
+```
+
+This builds the **`time-deposit-kata:dev`** image, waits for PostgreSQL to be
+healthy, starts the app with the **`dev`** profile, and waits until its HTTP/database
+health check passes. On a fresh volume the sample data is ready immediately.
+Open **<http://localhost:8080/swagger-ui.html>**, expand an operation, select
+**Try it out**, then **Execute**. The raw contract is at
+<http://localhost:8080/openapi.yaml>.
+
+```sh
+curl 'http://localhost:8080/time-deposits?page=0&size=20'
+curl -i -X POST http://localhost:8080/time-deposits/balance-updates
+docker compose logs -f app
+```
+
+POST acknowledges a background execution; inspect its terminal status in the
+database, then use GET to see the updated balances:
+
+```sh
+docker compose exec -T postgres psql -U time_deposit -d time_deposits \
+  -c 'SELECT id, status, started_at, finished_at FROM balance_update_executions ORDER BY started_at DESC;'
+```
+
+The multi-stage [Dockerfile](../Dockerfile) compiles the reactor with Maven 3.9 /
+Temurin JDK 25 and packages just the executable Boot jar into a Temurin Java 25
+JRE image. The runtime uses a non-root user; the profile is selected at runtime,
+not baked into the image. A BuildKit Maven cache accelerates rebuilds. The image
+build skips test execution; run `mvn verify` separately with a reachable Docker
+daemon for the Testcontainers suite. Build the image on its own with:
+
+```sh
+docker build -t time-deposit-kata:dev .
+```
+
+### Ports, profiles and persisted data
+
+Compose defaults to host ports `8080` for HTTP and `5432` for PostgreSQL. Override
+them when occupied (the internal application/database ports remain unchanged):
+
+```sh
+PORT=18080 POSTGRES_PORT=55432 docker compose up --build -d --wait
+```
+
+Then open <http://localhost:18080/swagger-ui.html>. To run without automatic
+sample seeding, set `SPRING_PROFILES_ACTIVE=default` when bringing up Compose.
+Existing data is retained when changing profiles.
+
+```sh
+docker compose down          # Stop app/database; retain the named database volume
+docker compose down -v       # Delete this stack's database data for a fresh sample run
+docker compose up -d --wait  # Recreate the database and seed with dev
+```
+
+Use the same port/profile overrides on subsequent Compose commands. If running
+multiple independent stacks, use `docker compose -p <name>` with distinct host
+ports so their containers, networks and database volumes stay isolated.
+
+## Run locally with a host JVM
 
 ```sh
 docker compose up -d --wait postgres

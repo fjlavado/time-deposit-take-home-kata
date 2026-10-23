@@ -1,5 +1,42 @@
 # AI-assisted development workflow
 
+## Containerized development startup — 2026-10-23
+
+OpenCode (`openai/gpt-6.1-sol`) added the multi-stage Java 25 Dockerfile,
+`.dockerignore`, application Compose service and operational documentation.
+The registry manifests were checked with `docker buildx imagetools inspect`.
+Compose selects `dev` at runtime, waits for PostgreSQL health, and uses the image's
+HTTP/database health check for `up --wait`. Host ports are configurable so smoke
+checks can use an isolated Compose project without disturbing existing stacks.
+The image runs as a non-root user. AI assistance covered build/runtime
+configuration, manual container smoke verification and startup/reset instructions.
+
+Verification used the local Docker socket (`DOCKER_HOST=unix:///var/run/docker.sock`),
+Compose project `time-deposit-smoke`, HTTP port `18080` and PostgreSQL port `55434`:
+
+- `docker compose -p time-deposit-smoke config --quiet` passed.
+- `docker compose -p time-deposit-smoke build app` compiled/package-built with
+  Temurin JDK 25 and produced `time-deposit-kata:dev`.
+- `docker compose -p time-deposit-smoke up -d --wait --wait-timeout 120` passed
+  both service health checks with the sample dataset ready.
+- A temporary Python script under `/tmp/opencode/` used the existing Playwright
+  installation and headless Chromium to open `/swagger-ui.html`, render exactly
+  two operations and click **Try it out / Execute** for GET (200) and POST (202).
+  There were no browser JavaScript errors or failed network requests.
+- Python's standard-library HTTP client and Compose/psql checks verified all six
+  pages, 120 deposits/120 withdrawals, boundary/rounding balances, unchanged
+  withdrawals and days, a completed UUID execution, and version 1 on all deposits.
+- Restarting the app preserved the complete updated API dataset and execution
+  history without duplicate seeds. Recreating the same image with
+  `SPRING_PROFILES_ACTIVE=default` also passed health checks and preserved data.
+- The isolated smoke containers/network/volume were removed with `down -v`.
+  Existing development containers and volumes were left intact.
+
+The preceding dev-profile checkpoint passed the full `mvn verify` reactor,
+including 41 PostgreSQL integration cases without failures, errors or skips.
+Container verification additionally exercises the Java 25 runtime and packaged
+resources. No Python/browser tooling is required to build or run the application.
+
 ## Development sample-data profile — 2026-10-23
 
 OpenCode (`openai/gpt-6.1-sol`), following the same local tooling and agent rules
