@@ -1,5 +1,22 @@
 # AI-assisted development workflow
 
+## Assignment comparison documentation — 2026-10-23
+
+OpenCode (`openai/gpt-6.1-sol`) compared the root assignment, starter Java sources
+in Git history, current implementation, contract, tests, and existing documentation.
+At the user's request, it documented the differences in
+[REQUIREMENTS_COMPARISON.md](REQUIREMENTS_COMPARISON.md) and linked that guide from
+the backend README. The explanation covers the limited HTTP interaction changes
+from pagination and asynchronous acceptance, their rationale and client impact,
+and the separate breaking shared-Java-API and rounding changes. This documentation
+work uses the existing harness and [agent rules](../AGENTS.md).
+
+The user also requested one atomic documentation commit. Verification passed
+`git diff --check` and the existing temporary Python documentation validator
+under `/tmp/opencode/`, covering 12 Markdown files and 54 local links, the docs
+layout, and stale project paths. Maven was not rerun for this documentation-only
+change.
+
 ## Containerized development startup — 2026-10-23
 
 OpenCode (`openai/gpt-6.1-sol`) added the multi-stage Java 25 Dockerfile,

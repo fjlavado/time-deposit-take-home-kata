@@ -1,8 +1,11 @@
 # Time Deposit backend
 
 Java 25 target, Maven multi-module build, Spring Boot 4.1.1, PostgreSQL, Spring Data JDBC, and Flyway.
-The implementation follows the [assignment](../../README.md), the tracked [implementation plan](IMPLEMENTATION_PLAN.md),
+The implementation is based on the [assignment](../../README.md), the tracked [implementation plan](IMPLEMENTATION_PLAN.md),
 and the completed [Doodle-inspired refactoring plan](HEXAGONAL_REFACTOR_PLAN.md).
+See [assignment coverage and deliberate differences](REQUIREMENTS_COMPARISON.md)
+for the rationale and client impact of pagination and background updates, and the
+separate shared-Java-API and rounding compatibility changes.
 
 This is the Java documentation entry point. All commands and source paths in these
 guides are relative to `java/`, unless stated otherwise; run commands from that
@@ -243,6 +246,11 @@ For a repeatable large dataset and stress testing, see
 Stop the local database with `docker compose down`; its named volume retains data.
 
 ## API
+
+The API retains the assignment's two business capabilities. Pagination changes
+the collection response shape, and background execution makes POST acknowledge
+acceptance rather than completion. Their limited scope, rationale, and client
+obligations are documented in the [requirements comparison](REQUIREMENTS_COMPARISON.md).
 
 | Method | Path | Result |
 | --- | --- | --- |
